@@ -1,0 +1,19 @@
+.header {
+  text-align: center;
+  margin-bottom: 1rem;
+}
+
+.logo {
+  height: 60px;
+}
+
+.header h1 {
+  margin: 0.5rem 0;
+  font-size: 2rem;
+}
+
+.header p {
+  margin: 0;
+  font-size: 1rem;
+  color: #ddd;
+}

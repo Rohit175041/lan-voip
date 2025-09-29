@@ -1,0 +1,13 @@
+.status {
+  margin-bottom: 1rem;
+  font-size: 1.1rem;
+}
+.status.connected {
+  color: #4caf50;
+}
+.status.waiting {
+  color: #ffeb3b;
+}
+.status.disconnected {
+  color: #f44336;
+}
