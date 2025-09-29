@@ -14,9 +14,9 @@ export default function App() {
         `${window.location.origin.replace(/^http/, "ws")}/ws`
     );
     setWs(socket);
-    socket.onopen = () => console.log("✅ WebSocket connected");
-    socket.onerror = (e) => console.error("❌ WebSocket error:", e);
-    socket.onclose = () => console.warn("⚠️ WebSocket closed");
+    socket.onopen = () => console.log("WebSocket connected");
+    socket.onerror = (e) => console.error("WebSocket error:", e);
+    socket.onclose = () => console.warn("WebSocket closed");
     return socket;
   };
 
@@ -43,7 +43,7 @@ export default function App() {
 
     // Remote track
     peer.ontrack = (e) => {
-      console.log("✅ Remote track received");
+      console.log("Remote track received");
       if (remoteVideo.current && e.streams[0]) {
         remoteVideo.current.srcObject = e.streams[0];
       }
@@ -52,7 +52,7 @@ export default function App() {
     // Listen for signalling
     socket.onmessage = async (event) => {
       const data = JSON.parse(event.data);
-      console.log("⬅️ WS:", data);
+      console.log("⬅WS:", data);
       if (data.sdp) {
         await peer.setRemoteDescription(new RTCSessionDescription(data.sdp));
         if (data.sdp.type === "offer") {
@@ -77,7 +77,7 @@ export default function App() {
     }
     const socket = initWebSocket();
     socket.onopen = async () => {
-      console.log("📞 Starting call...");
+      console.log("Starting call...");
       const peer = await initPeer(socket);
       const offer = await peer.createOffer();
       await peer.setLocalDescription(offer);
@@ -87,7 +87,7 @@ export default function App() {
 
   // ---- Disconnect ----
   const disconnect = () => {
-    console.log("🛑 Disconnecting...");
+    console.log("Disconnecting...");
 
     // Stop local tracks
     if (localVideo.current?.srcObject) {
