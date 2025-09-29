@@ -1,4 +1,14 @@
 import React, { useRef, useState } from "react";
+import "./App.css";
+
+import Header from "./components/Header";
+import StatusIndicator from "./components/StatusIndicator";
+import VideoGrid from "./components/VideoGrid";
+import RoomInput from "./components/RoomInput";
+import TimerProgress from "./components/TimerProgress";
+
+import { createPeerConnection, cleanupPeerConnection } from "./utils/webrtc";
+import { createWebSocket } from "./utils/signaling";
 
 export default function App() {
   const localVideo = useRef(null);
@@ -11,7 +21,7 @@ export default function App() {
   const timerRef = useRef(null);
   const [status, setStatus] = useState("disconnected"); // disconnected | waiting | connected
 
-  // ---------------- TIMER ----------------
+  // -------- TIMER --------
   const startTimer = (seconds) => {
     stopTimer();
     setTimeLeft(seconds);
@@ -21,7 +31,7 @@ export default function App() {
         if (prev <= 1) {
           stopTimer();
           alert("No one joined within 2 minutes. Call ended.");
-          cleanupPeer();
+          disconnect();
           return 0;
         }
         return prev - 1;
@@ -35,26 +45,16 @@ export default function App() {
     setTimeLeft(null);
   };
 
-  // ---------------- CLEANUP ----------------
-  const cleanupPeer = () => {
+  // -------- CLEANUP --------
+  const disconnect = () => {
     stopTimer();
     setStatus("disconnected");
-
-    if (localVideo.current?.srcObject) {
-      localVideo.current.srcObject.getTracks().forEach((t) => t.stop());
-      localVideo.current.srcObject = null;
-    }
-    if (remoteVideo.current) remoteVideo.current.srcObject = null;
-
-    pc?.getSenders().forEach((s) => s.track && s.track.stop());
-    pc?.close();
+    cleanupPeerConnection(pc, ws, localVideo, remoteVideo);
     setPc(null);
-
-    if (ws && ws.readyState === WebSocket.OPEN) ws.close();
     setWs(null);
   };
 
-  // ---------------- START CALL ----------------
+  // -------- START CALL --------
   const startCall = async () => {
     if (!room.trim()) {
       alert("⚠️ Enter a Room ID first");
@@ -65,30 +65,15 @@ export default function App() {
       return;
     }
 
-    const isLocal =
-      window.location.hostname === "localhost" ||
-      window.location.hostname === "127.0.0.1";
-
-    const base =
-      process.env.REACT_APP_SIGNALING_URL ||
-      (isLocal
-        ? `ws://${window.location.hostname}:8080/ws`
-        : `wss://${window.location.hostname}/ws`);
-    const socketUrl = `${base}?room=${encodeURIComponent(room)}`;
-
-    const socket = new WebSocket(socketUrl);
+    const socket = createWebSocket(room, disconnect);
     setWs(socket);
-
-    socket.onerror = (err) => console.error("❌ WebSocket error:", err);
-    socket.onclose = () => cleanupPeer();
 
     socket.onopen = async () => {
       setStatus("waiting");
 
-      const peer = new RTCPeerConnection({
-        iceServers: [
-          { urls: process.env.REACT_APP_ICE_SERVERS || "stun:stun.l.google.com:19302" },
-        ],
+      const peer = createPeerConnection(socket, localVideo, remoteVideo, () => {
+        stopTimer();
+        setStatus("connected");
       });
       setPc(peer);
 
@@ -104,20 +89,6 @@ export default function App() {
         socket.close();
         return;
       }
-
-      peer.onicecandidate = (e) => {
-        if (e.candidate && socket.readyState === WebSocket.OPEN) {
-          socket.send(JSON.stringify({ ice: e.candidate }));
-        }
-      };
-
-      peer.ontrack = (e) => {
-        if (remoteVideo.current && e.streams[0]) {
-          remoteVideo.current.srcObject = e.streams[0];
-        }
-        stopTimer();
-        setStatus("connected");
-      };
 
       socket.onmessage = async (event) => {
         const data = JSON.parse(event.data);
@@ -140,7 +111,7 @@ export default function App() {
           }
         } else if (data.type === "timeout") {
           alert(data.message || "Call ended due to inactivity.");
-          cleanupPeer();
+          disconnect();
         }
       };
 
@@ -152,184 +123,27 @@ export default function App() {
     };
   };
 
-  const disconnect = () => cleanupPeer();
-
-  // ---------------- UI ----------------
   return (
-    <div
-      style={{
-        minHeight: "100vh",
-        backgroundImage:
-          "linear-gradient(rgba(0,0,0,0.5), rgba(0,0,0,0.6)), url('https://images.unsplash.com/photo-1496307042754-b4aa456c4a2d?auto=format&fit=crop&w=1500&q=80')",
-        backgroundSize: "cover",
-        backgroundPosition: "center",
-        display: "flex",
-        flexDirection: "column",
-        alignItems: "center",
-        padding: "2rem",
-        fontFamily: "Poppins, sans-serif",
-        color: "#fff",
-      }}
-    >
-      {/* HEADER */}
-      <div style={{ textAlign: "center", marginBottom: "1rem" }}>
-        <img
-          src="https://img.icons8.com/color/96/video-call.png"
-          alt="logo"
-          style={{ height: "60px" }}
-        />
-        <h1 style={{ margin: "0.5rem 0", fontSize: "2rem" }}>WaveRTC</h1>
-        <p style={{ margin: 0, fontSize: "1rem", color: "#ddd" }}>
-          Peer-to-peer video chat
-        </p>
-      </div>
+    <div className="app-container">
+      <Header />
+      <StatusIndicator status={status} />
 
-      {/* STATUS */}
-      <div style={{ marginBottom: "1rem", fontSize: "1.1rem" }}>
-        {status === "connected" && <span style={{ color: "#4caf50" }}>🟢 Connected</span>}
-        {status === "waiting" && <span style={{ color: "#ffeb3b" }}>⏳ Waiting...</span>}
-        {status === "disconnected" && <span style={{ color: "#f44336" }}>🔴 Disconnected</span>}
-      </div>
+      <VideoGrid localRef={localVideo} remoteRef={remoteVideo} />
 
-      {/* VIDEO SECTION */}
-      <div style={{ display: "flex", gap: "1rem", flexWrap: "wrap", justifyContent: "center" }}>
-        {[{ ref: localVideo, label: "You" }, { ref: remoteVideo, label: "Remote" }].map(
-          (v, i) => (
-            <div
-              key={i}
-              style={{
-                background: "rgba(0,0,0,0.6)",
-                borderRadius: "15px",
-                overflow: "hidden",
-                width: "300px",
-                height: "200px",
-                boxShadow: "0 8px 25px rgba(0,0,0,0.4)",
-                position: "relative",
-              }}
-            >
-              <video
-                ref={v.ref}
-                autoPlay
-                muted={v.label === "You"}
-                playsInline
-                style={{ width: "100%", height: "100%", objectFit: "cover" }}
-              />
-              <div
-                style={{
-                  position: "absolute",
-                  bottom: "8px",
-                  right: "8px",
-                  background: "rgba(0,0,0,0.5)",
-                  padding: "4px 8px",
-                  borderRadius: "6px",
-                  fontSize: "0.8rem",
-                }}
-              >
-                {v.label}
-              </div>
-            </div>
-          )
-        )}
-      </div>
+      <RoomInput room={room} setRoom={setRoom} />
 
-      {/* ROOM INPUT */}
-      <div style={{ display: "flex", alignItems: "center", marginTop: "1rem" }}>
-        <input
-          type="text"
-          value={room}
-          onChange={(e) => setRoom(e.target.value)}
-          placeholder="Enter Room ID"
-          style={{
-            padding: "0.6rem 1rem",
-            fontSize: "1rem",
-            textAlign: "center",
-            borderRadius: "25px",
-            border: "none",
-            width: "250px",
-            marginRight: "8px",
-          }}
-        />
-        {room && (
-          <button
-            onClick={() => navigator.clipboard.writeText(room)}
-            title="Copy Room ID"
-            style={{
-              background: "#2196f3",
-              border: "none",
-              borderRadius: "50%",
-              color: "white",
-              width: "40px",
-              height: "40px",
-              cursor: "pointer",
-              boxShadow: "0 3px 8px rgba(0,0,0,0.2)",
-            }}
-          >
-            📋
-          </button>
-        )}
-      </div>
+      {timeLeft !== null && <TimerProgress timeLeft={timeLeft} />}
 
-      {/* TIMER PROGRESS */}
-      {timeLeft !== null && (
-        <div style={{ marginTop: "0.5rem", textAlign: "center", width: "250px" }}>
-          <div
-            style={{
-              height: "8px",
-              background: "#eee",
-              borderRadius: "5px",
-              overflow: "hidden",
-            }}
-          >
-            <div
-              style={{
-                height: "8px",
-                width: `${(timeLeft / 120) * 100}%`,
-                background: "#ff9800",
-                transition: "width 1s linear",
-              }}
-            />
-          </div>
-          <div style={{ marginTop: "5px", fontSize: "0.9rem", color: "#fff" }}>
-            Waiting... {timeLeft}s
-          </div>
-        </div>
-      )}
-
-      {/* BUTTONS */}
-      <div style={{ marginTop: "1rem" }}>
+      <div className="button-group">
         <button
           onClick={startCall}
           disabled={pc || ws}
-          title="Start a new call"
-          style={{
-            marginRight: "1rem",
-            padding: "0.7rem 1.5rem",
-            fontSize: "1rem",
-            border: "none",
-            borderRadius: "25px",
-            background: pc || ws ? "#9e9e9e" : "#4caf50",
-            color: "white",
-            cursor: pc || ws ? "not-allowed" : "pointer",
-            boxShadow: "0 4px 10px rgba(0,0,0,0.2)",
-          }}
+          className={`btn ${pc || ws ? "btn-disabled" : "btn-green"}`}
         >
           📞 Start Call
         </button>
 
-        <button
-          onClick={disconnect}
-          title="Disconnect call"
-          style={{
-            padding: "0.7rem 1.5rem",
-            fontSize: "1rem",
-            border: "none",
-            borderRadius: "25px",
-            background: "#f44336",
-            color: "white",
-            cursor: "pointer",
-            boxShadow: "0 4px 10px rgba(0,0,0,0.2)",
-          }}
-        >
+        <button onClick={disconnect} className="btn btn-red">
           ❌ Disconnect
         </button>
       </div>
