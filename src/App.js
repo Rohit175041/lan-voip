@@ -6,7 +6,9 @@ export default function App() {
 
   const [pc, setPc] = useState(null);
   const [ws, setWs] = useState(null);
-  const [room, setRoom] = useState(""); // user must enter
+  const [room, setRoom] = useState("");
+  const [timeLeft, setTimeLeft] = useState(null); // countdown seconds
+  const [timerId, setTimerId] = useState(null);
 
   // ---- Start Call ----
   const startCall = async () => {
@@ -15,7 +17,7 @@ export default function App() {
       return;
     }
     if (pc || ws) {
-      alert("⚠️ You are already in a call. Disconnect first.");
+      alert("⚠️ Already in a call. Disconnect first.");
       return;
     }
 
@@ -23,12 +25,12 @@ export default function App() {
       window.location.hostname === "localhost" ||
       window.location.hostname === "127.0.0.1";
 
-    // ---- Build signalling URL ----
     const base =
       process.env.REACT_APP_SIGNALING_URL ||
       (isLocal
-        ? `ws://${window.location.hostname}:8080/ws` // local dev
-        : `wss://${window.location.hostname}/ws`); // production
+        ? `ws://${window.location.hostname}:8080/ws`
+        : `wss://${window.location.hostname}/ws`);
+
     const socketUrl = `${base}?room=${encodeURIComponent(room)}`;
     console.log("🔌 Connecting to signaling server:", socketUrl);
 
@@ -46,16 +48,12 @@ export default function App() {
 
       const peer = new RTCPeerConnection({
         iceServers: [
-          {
-            urls:
-              process.env.REACT_APP_ICE_SERVERS ||
-              "stun:stun.l.google.com:19302",
-          },
+          { urls: process.env.REACT_APP_ICE_SERVERS || "stun:stun.l.google.com:19302" },
         ],
       });
       setPc(peer);
 
-      // --- Get local camera & mic ---
+      // Local media
       try {
         const stream = await navigator.mediaDevices.getUserMedia({
           video: true,
@@ -71,7 +69,7 @@ export default function App() {
         return;
       }
 
-      // --- ICE candidates ---
+      // ICE
       peer.onicecandidate = (e) => {
         if (e.candidate && socket.readyState === WebSocket.OPEN) {
           console.log("➡️ Sending ICE candidate");
@@ -79,52 +77,81 @@ export default function App() {
         }
       };
 
-      // --- Remote stream ---
+      // Remote track
       peer.ontrack = (e) => {
-        console.log("✅ Remote track received");
+        console.log("✅ Remote track received — other user joined");
         if (remoteVideo.current && e.streams[0]) {
           remoteVideo.current.srcObject = e.streams[0];
         }
+        cancelTimer(); // stop countdown if remote joins
       };
 
-      // --- Handle messages from signaling server ---
+      // Signaling
       socket.onmessage = async (event) => {
         const data = JSON.parse(event.data);
-        console.log("⬅️ WS message:", data);
+        console.log("⬅️ WS:", data);
         try {
           if (data.sdp) {
-            await peer.setRemoteDescription(
-              new RTCSessionDescription(data.sdp)
-            );
-            console.log(`✅ Set remote description: ${data.sdp.type}`);
-
+            await peer.setRemoteDescription(new RTCSessionDescription(data.sdp));
             if (data.sdp.type === "offer") {
               const answer = await peer.createAnswer();
               await peer.setLocalDescription(answer);
-              console.log("➡️ Sending answer");
               socket.send(JSON.stringify({ sdp: peer.localDescription }));
             }
           } else if (data.ice) {
             await peer.addIceCandidate(new RTCIceCandidate(data.ice));
-            console.log("✅ Added ICE candidate");
+          } else if (data.type === "roomSize" && data.count >= 2) {
+            console.log("👥 Another user joined. Stop timer.");
+            cancelTimer();
+          } else if (data.type === "timeout") {
+            alert(data.message || "No one joined in time. Call ended.");
+            cleanupPeer();
           }
         } catch (err) {
           console.error("❌ Signaling error:", err);
         }
       };
 
-      // --- Create & send our offer ---
+      // Offer
       console.log("📞 Creating offer...");
       const offer = await peer.createOffer();
       await peer.setLocalDescription(offer);
-      console.log("➡️ Sending offer");
       socket.send(JSON.stringify({ sdp: peer.localDescription }));
+
+      // 🔥 Start 2-min countdown
+      startTimer(120);
     };
+  };
+
+  // ---- Countdown timer ----
+  const startTimer = (seconds) => {
+    setTimeLeft(seconds);
+    const id = setInterval(() => {
+      setTimeLeft((prev) => {
+        if (prev === 1) {
+          clearInterval(id);
+          console.warn("⏳ No remote user joined within 2 minutes. Ending call.");
+          alert("No one joined the call within 2 minutes. Call ended.");
+          cleanupPeer();
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+    setTimerId(id);
+  };
+
+  const cancelTimer = () => {
+    if (timerId) clearInterval(timerId);
+    setTimerId(null);
+    setTimeLeft(null);
   };
 
   // ---- Disconnect & Cleanup ----
   const cleanupPeer = () => {
-    console.log("🛑 Cleaning up peer & media...");
+    console.log("🛑 Cleaning up call...");
+    cancelTimer();
+
     if (localVideo.current?.srcObject) {
       localVideo.current.srcObject.getTracks().forEach((t) => t.stop());
       localVideo.current.srcObject = null;
@@ -181,12 +208,16 @@ export default function App() {
         />
       </div>
 
+      {/* Countdown */}
+      {timeLeft !== null && (
+        <div style={{ marginTop: "0.5rem", color: "orange", fontWeight: "bold" }}>
+          Waiting for someone to join... Time left: {timeLeft}s
+        </div>
+      )}
+
       {/* Buttons */}
       <div style={{ marginTop: "0.5rem" }}>
-        <button
-          onClick={startCall}
-          style={{ marginRight: "1rem", padding: "0.5rem 1rem" }}
-        >
+        <button onClick={startCall} style={{ marginRight: "1rem", padding: "0.5rem 1rem" }}>
           Start Call
         </button>
         <button
