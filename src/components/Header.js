@@ -8,7 +8,7 @@ export default function Header() {
       />
       {/* <h1 style={{ margin: "0.5rem 0", fontSize: "2rem" }}>WaveRTC</h1> */}
       <p style={{ margin: 0, fontSize: "1rem", color: "#ddd" }}>
-        Peer-to-peer video chat
+        Peer-to-peer video call
       </p>
     </div>
   );
