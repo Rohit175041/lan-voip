@@ -6,25 +6,34 @@ export default function App() {
 
   const [pc, setPc] = useState(null);
   const [ws, setWs] = useState(null);
-  const [room, setRoom] = useState("123"); // default room
+  const [room, setRoom] = useState(""); // no default
 
-  // ---- Start Call ----
+  // --- Start Call ---
   const startCall = async () => {
+    if (!room.trim()) {
+      alert("Please enter a Room ID before starting a call.");
+      return;
+    }
     if (pc || ws) {
-      console.warn("⚠️ Already in a call. Please disconnect first.");
+      console.warn("Already in a call. Disconnect first.");
       return;
     }
 
-    const socketUrl = `${
+    // --- Build signalling URL ---
+    const isLocalhost = window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1";
+    const base =
       process.env.REACT_APP_SIGNALING_URL ||
-      window.location.origin.replace(/^http/, "ws")
-    }/ws?room=${room}`;
+      (isLocalhost
+        ? `ws://${window.location.hostname}:8080` // local dev
+        : `wss://${window.location.hostname}`);    // production
+    const socketUrl = `${base}/ws?room=${encodeURIComponent(room)}`;
 
+    console.log("Connecting to:", socketUrl);
     const socket = new WebSocket(socketUrl);
     setWs(socket);
 
-    socket.onerror = (e) => console.error("❌ WebSocket error:", e);
-    socket.onclose = () => console.warn("⚠️ WebSocket closed");
+    socket.onerror = (e) => console.error("WebSocket error:", e);
+    socket.onclose = () => console.warn("WebSocket closed");
 
     socket.onopen = async () => {
       console.log(`✅ Connected to room: ${room}`);
@@ -36,12 +45,9 @@ export default function App() {
       });
       setPc(peer);
 
-      // Get local camera & mic
+      // Local media
       try {
-        const stream = await navigator.mediaDevices.getUserMedia({
-          video: true,
-          audio: true,
-        });
+        const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
         if (localVideo.current) localVideo.current.srcObject = stream;
         stream.getTracks().forEach((t) => peer.addTrack(t, stream));
       } catch (err) {
@@ -50,7 +56,7 @@ export default function App() {
         return;
       }
 
-      // Send ICE candidates
+      // ICE candidates
       peer.onicecandidate = (e) => {
         if (e.candidate && socket.readyState === WebSocket.OPEN) {
           console.log("➡️ Sending ICE candidate");
@@ -58,7 +64,7 @@ export default function App() {
         }
       };
 
-      // Show remote stream
+      // Remote stream
       peer.ontrack = (e) => {
         console.log("✅ Remote track received");
         if (remoteVideo.current && e.streams[0]) {
@@ -66,7 +72,7 @@ export default function App() {
         }
       };
 
-      // Handle messages from signaling server
+      // Signaling messages
       socket.onmessage = async (event) => {
         const data = JSON.parse(event.data);
         console.log("⬅️ WS:", data);
@@ -94,7 +100,7 @@ export default function App() {
     };
   };
 
-  // ---- Disconnect ----
+  // --- Disconnect ---
   const disconnect = () => {
     console.log("🛑 Disconnecting...");
 
@@ -104,7 +110,7 @@ export default function App() {
     }
     if (remoteVideo.current) remoteVideo.current.srcObject = null;
 
-    if (pc) pc.close();
+    pc?.close();
     if (ws && ws.readyState === WebSocket.OPEN) ws.close();
 
     setPc(null);
@@ -114,23 +120,13 @@ export default function App() {
   return (
     <div style={{ textAlign: "center", padding: "1rem" }}>
       <h2>Video Call (WebRTC)</h2>
+
       <div style={{ display: "flex", justifyContent: "center", gap: "1rem" }}>
-        <video
-          ref={localVideo}
-          autoPlay
-          muted
-          playsInline
-          style={{ width: "45%", background: "#000" }}
-        />
-        <video
-          ref={remoteVideo}
-          autoPlay
-          playsInline
-          style={{ width: "45%", background: "#000" }}
-        />
+        <video ref={localVideo} autoPlay muted playsInline style={{ width: "45%", background: "#000" }} />
+        <video ref={remoteVideo} autoPlay playsInline style={{ width: "45%", background: "#000" }} />
       </div>
 
-      {/* Room ID input box */}
+      {/* Room ID input */}
       <div style={{ marginTop: "1rem" }}>
         <input
           type="text"
@@ -149,10 +145,7 @@ export default function App() {
 
       {/* Call buttons */}
       <div style={{ marginTop: "0.5rem" }}>
-        <button
-          onClick={startCall}
-          style={{ marginRight: "1rem", padding: "0.5rem 1rem" }}
-        >
+        <button onClick={startCall} style={{ marginRight: "1rem", padding: "0.5rem 1rem" }}>
           Start Call
         </button>
         <button
