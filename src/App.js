@@ -4,98 +4,47 @@ export default function App() {
   const localVideo = useRef(null);
   const remoteVideo = useRef(null);
 
-  // --- Load ICE servers from .env ---
-  const iceServers = [
-    { urls: process.env.REACT_APP_ICE_SERVERS || "stun:stun.l.google.com:19302" }
-  ];
-
-  const [pc] = useState(() => new RTCPeerConnection({ iceServers }));
+  const [pc, setPc] = useState(null);
   const [ws, setWs] = useState(null);
 
-  // ---- Get camera & microphone ----
-  useEffect(() => {
-    async function setupMedia() {
-      try {
-        const stream = await navigator.mediaDevices.getUserMedia({
-          video: true,
-          audio: true,
-        });
-        if (localVideo.current) localVideo.current.srcObject = stream;
-        stream.getTracks().forEach((track) => pc.addTrack(track, stream));
-      } catch (err) {
-        console.error("getUserMedia error:", err.name, err.message);
-        alert(
-          "Camera/Microphone permission denied or blocked. Please allow access and reload."
-        );
+  const setupConnection = async () => {
+    const peer = new RTCPeerConnection({
+      iceServers: [{ urls: process.env.REACT_APP_ICE_SERVERS || "stun:stun.l.google.com:19302" }],
+    });
+    setPc(peer);
+
+    const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+    if (localVideo.current) localVideo.current.srcObject = stream;
+    stream.getTracks().forEach((t) => peer.addTrack(t, stream));
+
+    peer.onicecandidate = (e) => {
+      if (e.candidate && ws?.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({ ice: e.candidate }));
       }
-    }
-    setupMedia();
-  }, [pc]);
+    };
+    peer.ontrack = (e) => {
+      if (remoteVideo.current && e.streams[0]) {
+        remoteVideo.current.srcObject = e.streams[0];
+      }
+    };
+
+    return peer;
+  };
 
   // ---- WebSocket signalling ----
   useEffect(() => {
-    const socketUrl =
+    const socket = new WebSocket(
       process.env.REACT_APP_SIGNALING_URL ||
-      `${window.location.origin.replace(/^http/, "ws")}/ws`;
-
-    const socket = new WebSocket(socketUrl);
+        `${window.location.origin.replace(/^http/, "ws")}/ws`
+    );
     setWs(socket);
 
     socket.onopen = () => console.log("✅ WebSocket connected");
     socket.onerror = (e) => console.error("❌ WebSocket error:", e);
     socket.onclose = (e) => console.warn("⚠️ WebSocket closed:", e);
 
-    socket.onmessage = async (event) => {
-      const data = JSON.parse(event.data);
-      console.log("⬅️ WS message:", data);
-
-      try {
-        if (data.sdp) {
-          await pc.setRemoteDescription(new RTCSessionDescription(data.sdp));
-          console.log("✅ Set remote description:", data.sdp.type);
-
-          if (data.sdp.type === "offer") {
-            const answer = await pc.createAnswer();
-            await pc.setLocalDescription(answer);
-            console.log("➡️ Sending answer");
-            socket.send(JSON.stringify({ sdp: pc.localDescription }));
-          }
-        } else if (data.ice) {
-          await pc.addIceCandidate(new RTCIceCandidate(data.ice));
-          console.log("✅ Added ICE candidate");
-        }
-      } catch (err) {
-        console.error("❌ Signalling error:", err);
-      }
-    };
-
     return () => socket.close();
-  }, [pc]);
-
-  // ---- ICE candidate + remote stream ----
-  useEffect(() => {
-    pc.onicecandidate = (e) => {
-      if (e.candidate && ws?.readyState === WebSocket.OPEN) {
-        console.log("➡️ Sending ICE candidate");
-        ws.send(JSON.stringify({ ice: e.candidate }));
-      }
-    };
-
-    pc.ontrack = (e) => {
-      console.log("✅ Remote track received");
-      if (remoteVideo.current && e.streams[0]) {
-        remoteVideo.current.srcObject = e.streams[0];
-      }
-    };
-
-    pc.oniceconnectionstatechange = () => {
-      console.log("ICE state:", pc.iceConnectionState);
-    };
-
-    pc.onconnectionstatechange = () => {
-      console.log("PC state:", pc.connectionState);
-    };
-  }, [pc, ws]);
+  }, []);
 
   // ---- Start a call ----
   const startCall = async () => {
@@ -103,41 +52,54 @@ export default function App() {
       alert("WebSocket not connected");
       return;
     }
-    try {
-      console.log("📞 Creating offer");
-      const offer = await pc.createOffer();
-      await pc.setLocalDescription(offer);
-      console.log("➡️ Sending offer");
-      ws.send(JSON.stringify({ sdp: pc.localDescription }));
-    } catch (err) {
-      console.error("❌ Start call error:", err);
-    }
+    const peer = await setupConnection();
+    ws.onmessage = async (event) => {
+      const data = JSON.parse(event.data);
+      if (data.sdp) {
+        await peer.setRemoteDescription(new RTCSessionDescription(data.sdp));
+        if (data.sdp.type === "offer") {
+          const ans = await peer.createAnswer();
+          await peer.setLocalDescription(ans);
+          ws.send(JSON.stringify({ sdp: peer.localDescription }));
+        }
+      } else if (data.ice) {
+        await peer.addIceCandidate(new RTCIceCandidate(data.ice));
+      }
+    };
+
+    const offer = await peer.createOffer();
+    await peer.setLocalDescription(offer);
+    ws.send(JSON.stringify({ sdp: peer.localDescription }));
+  };
+
+  // ---- Disconnect ----
+  const disconnect = () => {
+    console.log("🛑 Disconnecting");
+    pc?.getSenders().forEach((s) => s.track && s.track.stop());
+    pc?.close();
+    ws?.close();
+    if (localVideo.current) localVideo.current.srcObject = null;
+    if (remoteVideo.current) remoteVideo.current.srcObject = null;
   };
 
   return (
     <div style={{ textAlign: "center", padding: "1rem" }}>
       <h2>Video Call (WebRTC)</h2>
       <div style={{ display: "flex", justifyContent: "center", gap: "1rem" }}>
-        <video
-          ref={localVideo}
-          autoPlay
-          muted
-          playsInline
-          style={{ width: "45%", background: "#000" }}
-        />
-        <video
-          ref={remoteVideo}
-          autoPlay
-          playsInline
-          style={{ width: "45%", background: "#000" }}
-        />
+        <video ref={localVideo} autoPlay muted playsInline style={{ width: "45%", background: "#000" }} />
+        <video ref={remoteVideo} autoPlay playsInline style={{ width: "45%", background: "#000" }} />
       </div>
-      <button
-        onClick={startCall}
-        style={{ marginTop: "1rem", padding: "0.5rem 1rem" }}
-      >
-        Start Call
-      </button>
+      <div style={{ marginTop: "1rem" }}>
+        <button onClick={startCall} style={{ marginRight: "1rem", padding: "0.5rem 1rem" }}>
+          Start Call
+        </button>
+        <button
+          onClick={disconnect}
+          style={{ padding: "0.5rem 1rem", background: "red", color: "white", border: "none" }}
+        >
+          Disconnect
+        </button>
+      </div>
     </div>
   );
 }
