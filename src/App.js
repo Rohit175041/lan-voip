@@ -6,57 +6,72 @@ export default function App() {
 
   const [pc, setPc] = useState(null);
   const [ws, setWs] = useState(null);
-  const [room, setRoom] = useState(""); // no default
+  const [room, setRoom] = useState(""); // user must enter
 
-  // --- Start Call ---
+  // ---- Start Call ----
   const startCall = async () => {
     if (!room.trim()) {
-      alert("Please enter a Room ID before starting a call.");
+      alert("⚠️ Please enter a Room ID before starting a call.");
       return;
     }
     if (pc || ws) {
-      console.warn("Already in a call. Disconnect first.");
+      alert("⚠️ You are already in a call. Disconnect first.");
       return;
     }
 
-    // --- Build signalling URL ---
-    const isLocalhost = window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1";
+    const isLocal =
+      window.location.hostname === "localhost" ||
+      window.location.hostname === "127.0.0.1";
+
+    // ---- Build signalling URL ----
     const base =
       process.env.REACT_APP_SIGNALING_URL ||
-      (isLocalhost
-        ? `ws://${window.location.hostname}:8080` // local dev
-        : `wss://${window.location.hostname}`);    // production
-    const socketUrl = `${base}/ws?room=${encodeURIComponent(room)}`;
+      (isLocal
+        ? `ws://${window.location.hostname}:8080/ws` // local dev
+        : `wss://${window.location.hostname}/ws`); // production
+    const socketUrl = `${base}?room=${encodeURIComponent(room)}`;
+    console.log("🔌 Connecting to signaling server:", socketUrl);
 
-    console.log("Connecting to:", socketUrl);
     const socket = new WebSocket(socketUrl);
     setWs(socket);
 
-    socket.onerror = (e) => console.error("WebSocket error:", e);
-    socket.onclose = () => console.warn("WebSocket closed");
+    socket.onerror = (e) => console.error("❌ WebSocket error:", e);
+    socket.onclose = () => {
+      console.warn("⚠️ WebSocket closed");
+      cleanupPeer();
+    };
 
     socket.onopen = async () => {
-      console.log(`✅ Connected to room: ${room}`);
+      console.log(`✅ Connected to signaling server. Joined room: ${room}`);
 
       const peer = new RTCPeerConnection({
         iceServers: [
-          { urls: process.env.REACT_APP_ICE_SERVERS || "stun:stun.l.google.com:19302" },
+          {
+            urls:
+              process.env.REACT_APP_ICE_SERVERS ||
+              "stun:stun.l.google.com:19302",
+          },
         ],
       });
       setPc(peer);
 
-      // Local media
+      // --- Get local camera & mic ---
       try {
-        const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: true,
+          audio: true,
+        });
         if (localVideo.current) localVideo.current.srcObject = stream;
         stream.getTracks().forEach((t) => peer.addTrack(t, stream));
+        console.log("🎥 Local media stream added");
       } catch (err) {
         console.error("getUserMedia error:", err.name, err.message);
         alert("Camera/Microphone permission denied or blocked.");
+        socket.close();
         return;
       }
 
-      // ICE candidates
+      // --- ICE candidates ---
       peer.onicecandidate = (e) => {
         if (e.candidate && socket.readyState === WebSocket.OPEN) {
           console.log("➡️ Sending ICE candidate");
@@ -64,7 +79,7 @@ export default function App() {
         }
       };
 
-      // Remote stream
+      // --- Remote stream ---
       peer.ontrack = (e) => {
         console.log("✅ Remote track received");
         if (remoteVideo.current && e.streams[0]) {
@@ -72,49 +87,61 @@ export default function App() {
         }
       };
 
-      // Signaling messages
+      // --- Handle messages from signaling server ---
       socket.onmessage = async (event) => {
         const data = JSON.parse(event.data);
-        console.log("⬅️ WS:", data);
+        console.log("⬅️ WS message:", data);
         try {
           if (data.sdp) {
-            await peer.setRemoteDescription(new RTCSessionDescription(data.sdp));
+            await peer.setRemoteDescription(
+              new RTCSessionDescription(data.sdp)
+            );
+            console.log(`✅ Set remote description: ${data.sdp.type}`);
+
             if (data.sdp.type === "offer") {
               const answer = await peer.createAnswer();
               await peer.setLocalDescription(answer);
+              console.log("➡️ Sending answer");
               socket.send(JSON.stringify({ sdp: peer.localDescription }));
             }
           } else if (data.ice) {
             await peer.addIceCandidate(new RTCIceCandidate(data.ice));
+            console.log("✅ Added ICE candidate");
           }
         } catch (err) {
           console.error("❌ Signaling error:", err);
         }
       };
 
-      // Create & send our offer
-      console.log("📞 Creating offer");
+      // --- Create & send our offer ---
+      console.log("📞 Creating offer...");
       const offer = await peer.createOffer();
       await peer.setLocalDescription(offer);
+      console.log("➡️ Sending offer");
       socket.send(JSON.stringify({ sdp: peer.localDescription }));
     };
   };
 
-  // --- Disconnect ---
-  const disconnect = () => {
-    console.log("🛑 Disconnecting...");
-
+  // ---- Disconnect & Cleanup ----
+  const cleanupPeer = () => {
+    console.log("🛑 Cleaning up peer & media...");
     if (localVideo.current?.srcObject) {
       localVideo.current.srcObject.getTracks().forEach((t) => t.stop());
       localVideo.current.srcObject = null;
     }
     if (remoteVideo.current) remoteVideo.current.srcObject = null;
 
+    pc?.getSenders().forEach((s) => s.track && s.track.stop());
     pc?.close();
-    if (ws && ws.readyState === WebSocket.OPEN) ws.close();
-
     setPc(null);
+
+    if (ws && ws.readyState === WebSocket.OPEN) ws.close();
     setWs(null);
+  };
+
+  const disconnect = () => {
+    console.log("🛑 Disconnect button clicked");
+    cleanupPeer();
   };
 
   return (
@@ -122,8 +149,19 @@ export default function App() {
       <h2>Video Call (WebRTC)</h2>
 
       <div style={{ display: "flex", justifyContent: "center", gap: "1rem" }}>
-        <video ref={localVideo} autoPlay muted playsInline style={{ width: "45%", background: "#000" }} />
-        <video ref={remoteVideo} autoPlay playsInline style={{ width: "45%", background: "#000" }} />
+        <video
+          ref={localVideo}
+          autoPlay
+          muted
+          playsInline
+          style={{ width: "45%", background: "#000" }}
+        />
+        <video
+          ref={remoteVideo}
+          autoPlay
+          playsInline
+          style={{ width: "45%", background: "#000" }}
+        />
       </div>
 
       {/* Room ID input */}
@@ -143,9 +181,12 @@ export default function App() {
         />
       </div>
 
-      {/* Call buttons */}
+      {/* Buttons */}
       <div style={{ marginTop: "0.5rem" }}>
-        <button onClick={startCall} style={{ marginRight: "1rem", padding: "0.5rem 1rem" }}>
+        <button
+          onClick={startCall}
+          style={{ marginRight: "1rem", padding: "0.5rem 1rem" }}
+        >
           Start Call
         </button>
         <button
