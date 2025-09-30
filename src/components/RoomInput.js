@@ -17,23 +17,24 @@ export default function RoomInput({ room, setRoom }) {
         }}
       />
       {room && (
-        <button
-          onClick={() => navigator.clipboard.writeText(room)}
-          title="Copy Room ID"
-          style={{
-            background: "#2196f3",
-            border: "none",
-            borderRadius: "50%",
-            color: "white",
-            width: "40px",
-            height: "40px",
-            cursor: "pointer",
-            boxShadow: "0 3px 8px rgba(0,0,0,0.2)",
-          }}
-        >
-          📋
-        </button>
-      )}
+  <button
+    onClick={() => navigator.clipboard.writeText(room)}
+    title="Copy Room ID"
+    style={{
+      background: "#2196f3",
+      border: "none",
+      borderRadius: "50%",
+      color: "white",
+      width: "40px",
+      height: "40px",
+      cursor: "pointer",
+      boxShadow: "0 3px 8px rgba(0,0,0,0.2)",
+    }}
+  >
+    📋
+  </button>
+)}
+
     </div>
   );
 }
