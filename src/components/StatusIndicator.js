@@ -1,9 +1,24 @@
+import "./StatusIndicator.css";
+import { FaCheckCircle, FaClock, FaTimesCircle } from "react-icons/fa";
+
 export default function StatusIndicator({ status }) {
   return (
-    <div style={{ marginBottom: "1rem", fontSize: "1.1rem" }}>
-      {status === "connected" && <span style={{ color: "#4caf50" }}>🟢 Connected</span>}
-      {status === "waiting" && <span style={{ color: "#ffeb3b" }}>⏳ Waiting...</span>}
-      {status === "disconnected" && <span style={{ color: "#f44336" }}>🔴 Disconnected</span>}
+    <div className="status-indicator">
+      {status === "connected" && (
+        <span className="status-pill glass connected">
+          <FaCheckCircle className="status-icon" /> Connected
+        </span>
+      )}
+      {status === "waiting" && (
+        <span className="status-pill glass waiting">
+          <FaClock className="status-icon" /> Waiting...
+        </span>
+      )}
+      {status === "disconnected" && (
+        <span className="status-pill glass disconnected">
+          <FaTimesCircle className="status-icon" /> Disconnected
+        </span>
+      )}
     </div>
   );
 }

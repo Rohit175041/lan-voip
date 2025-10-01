@@ -1,0 +1,168 @@
+/* =======================
+   CHAT CONTAINER
+   ======================= */
+.chat-container {
+  display: flex;
+  flex-direction: column;
+  max-height: 50vh; /* adjust as you like */
+  background: #0c1317; /* dark bg similar to WhatsApp */
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+}
+
+/* =======================
+   HEADER
+   ======================= */
+.chat-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 16px;
+  background: rgba(255, 255, 255, 0.08);
+  font-weight: 600;
+  color: #fff;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.chat-status {
+  font-size: 0.8rem;
+  text-transform: capitalize;
+}
+.chat-status.connected {
+  color: #90ee90;
+}
+.chat-status.disconnected {
+  color: #f08080;
+}
+
+/* =======================
+   MESSAGES AREA
+   ======================= */
+.chat-messages {
+  flex: 1;
+  overflow-y: auto;
+  padding: 12px;
+}
+
+/* Align messages left/right */
+.chat-message-wrapper {
+  display: flex;
+  margin: 6px 0;
+}
+.chat-message-wrapper.me {
+  justify-content: flex-end;
+}
+.chat-message-wrapper.remote {
+  justify-content: flex-start;
+}
+
+/* =======================
+   MESSAGE BUBBLES
+   ======================= */
+.chat-message {
+  max-width: 70%;
+  background: #005c4b;
+  border-radius: 8px;
+  font-size: 0.78rem;
+  line-height: 1.4;
+  color: #fff;
+  word-wrap: break-word;
+
+  /* Flex so text and time sit on same baseline */
+  display: inline-flex;
+  align-items: flex-end;
+  padding: 6px 10px;
+  position: relative;
+  
+}
+
+.chat-message.me {
+  background: #005c4b; /* WhatsApp green */
+  border-top-right-radius: 0; /* create tail effect */
+}
+
+.chat-message.remote {
+  background: #202c33; /* WhatsApp gray */
+  border-top-left-radius: 0;
+}
+
+/* Time INSIDE bubble */
+/* Time inside the bubble - WhatsApp style */
+.msg-time {
+  font-size: 0.5rem;
+  color: rgba(255, 255, 255, 0.6);
+  margin-left: 6px;           /* gap from text */
+  white-space: nowrap;        /* prevent wrap */
+  align-self: flex-end;       /* keeps it at text bottom */
+}
+
+
+/* =======================
+   FILES
+   ======================= */
+.file-receiving {
+  font-size: 0.85rem;
+  color: #f1c40f;
+  margin-bottom: 0.4rem;
+}
+
+.file-link {
+  color: #fff;
+  text-decoration: underline;
+}
+
+/* =======================
+   FOOTER / INPUT
+   ======================= */
+.chat-footer {
+  display: flex;
+  align-items: center;
+  padding: 8px;
+  background: #202c33;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.file-btn {
+  background: transparent;
+  border: none;
+  width: 36px;
+  height: 36px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  cursor: pointer;
+  color: #bbb;
+  margin-right: 8px;
+  transition: color 0.2s;
+}
+.file-btn:hover {
+  color: #fff;
+}
+
+.chat-input {
+  flex: 1;
+  border: none;
+  border-radius: 20px;
+  padding: 0.5rem 1rem;
+  outline: none;
+  background: #2a3942;
+  color: #fff;
+}
+
+.chat-btn {
+  background: transparent;
+  border: none;
+  width: 36px;
+  height: 36px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  cursor: pointer;
+  margin-left: 6px;
+  color: #00a884;
+  transition: color 0.2s;
+}
+.chat-btn:hover {
+  color: #20c997;
+}

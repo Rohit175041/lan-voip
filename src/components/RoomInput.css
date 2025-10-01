@@ -1,0 +1,70 @@
+.room-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  margin-top: 1rem;
+  width: 100%;
+}
+
+/* Wrapper */
+.room-input-wrapper {
+  display: flex;
+  align-items: center;
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 25px;
+  padding: 0.4rem 0.6rem;
+  width: 100%;
+  max-width: 380px;
+  transition: border 0.3s ease;
+}
+
+/* Input */
+.room-input {
+  flex: 1;
+  padding: 0.6rem 1rem;
+  font-size: 1rem;
+  text-align: center;
+  border: none;
+  background: transparent;
+  color: #fff;
+  outline: none;
+}
+
+.room-input::placeholder {
+  color: rgba(255, 255, 255, 0.5);
+}
+
+/* Error border (simple red border only) */
+.room-input-error {
+  border: 1.5px solid #ff4d4d;
+  border-radius: 20px;
+}
+
+/* Copy Button */
+.copy-btn {
+  background: #4caf50;
+  border: none;
+  border-radius: 50%;
+  color: white;
+  width: 36px;
+  height: 36px;
+  cursor: pointer;
+  margin-left: 8px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  font-size: 1rem;
+  transition: background 0.2s ease;
+}
+
+.copy-btn:hover {
+  background: #45a049;
+}
+
+/* Error text (simple, no icon glow) */
+.room-error {
+  color: #ff4d4d;
+  font-size: 0.85rem;
+  margin-top: 6px;
+  text-align: center;
+}

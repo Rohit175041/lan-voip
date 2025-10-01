@@ -1,0 +1,28 @@
+.progress-container {
+  width: 100%;
+  max-width: 400px;
+  height: 20px;
+  background: hsl(0, 5%, 74%);       /* ✅ simple light gray background */
+  border-radius: 12px;
+  position: relative;
+  overflow: hidden;
+  margin: 1rem auto;
+}
+
+.progress-bar {
+  height: 100%;
+  background: #4caf50;        /* ✅ clean green color */
+  border-radius: 12px;
+  transition: width 0.3s ease;
+}
+
+.progress-text {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  font-size: 0.9rem;
+  font-weight: 500;
+  color: #fff;                /* ✅ white text for readability */
+  pointer-events: none;
+}

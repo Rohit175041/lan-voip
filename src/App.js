@@ -1,5 +1,6 @@
 // App.js
-import React, { useRef, useState, useEffect } from "react";
+import React, { useRef, useState } from "react";
+import { FaPhone, FaPhoneSlash } from "react-icons/fa";
 import "./App.css";
 
 import Header from "./components/Header";
@@ -7,6 +8,7 @@ import StatusIndicator from "./components/StatusIndicator";
 import VideoGrid from "./components/VideoGrid";
 import RoomInput from "./components/RoomInput";
 import TimerProgress from "./components/TimerProgress";
+import ChatBox from "./components/ChatBox";
 
 import {
   createPeerConnection,
@@ -26,19 +28,12 @@ export default function App() {
   const timerRef = useRef(null);
   const [status, setStatus] = useState("disconnected");
 
-  // Chat + file
+  // Chat state
   const [messages, setMessages] = useState([]);
   const [chatChannel, setChatChannel] = useState(null);
   const [chatInput, setChatInput] = useState("");
   const [pendingMessages, setPendingMessages] = useState([]);
   const [receivingFile, setReceivingFile] = useState(null);
-  const chatEndRef = useRef(null);
-
-  // ---- Auto scroll chat ----
-  useEffect(() => {
-    if (chatEndRef.current)
-      chatEndRef.current.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
 
   // ---- Timer ----
   const startTimer = (seconds) => {
@@ -57,22 +52,49 @@ export default function App() {
       });
     }, 1000);
   };
+
   const stopTimer = () => {
     if (timerRef.current) clearInterval(timerRef.current);
     timerRef.current = null;
     setTimeLeft(null);
   };
 
+  // Helper: flush queued chat to an open channel
+  const flushQueued = (dc) => {
+    setPendingMessages((queued) => {
+      if (dc && dc.readyState === "open" && queued && queued.length) {
+        try {
+          queued.forEach((m) => dc.send(m));
+        } catch (err) {
+          console.warn("Failed flushing queued messages:", err);
+          // keep queue if sending failed
+          return queued;
+        }
+      }
+      return []; // clear on success
+    });
+  };
+
   // ---- Disconnect / cleanup ----
   const disconnect = () => {
     stopTimer();
     setStatus("disconnected");
+
+    // proactively close current chat channel to avoid sending on a zombie channel
+    try {
+      if (chatChannel && chatChannel.readyState !== "closed") {
+        chatChannel.close();
+      }
+    } catch (_) {}
+
+    // cleanup PeerConnection / WS / video elements
     cleanupPeerConnection(pc, ws, localVideo, remoteVideo);
+
     setPc(null);
     setWs(null);
+    // keep pendingMessages! do not clear them so they can be flushed after reconnect
     setChatChannel(null);
-    setMessages([]);
-    setPendingMessages([]);
+    setMessages([]); // keep/clear based on your UX preference
     setReceivingFile(null);
   };
 
@@ -98,12 +120,10 @@ export default function App() {
       try {
         const obj = JSON.parse(data);
         if (obj.fileStart) {
-          console.log("📦 File transfer start:", obj.fileStart);
           setReceivingFile({ name: obj.fileStart, size: obj.size, buffers: [] });
           return;
         }
         if (obj.fileEnd) {
-          console.log("✅ File transfer finished");
           setReceivingFile((prev) => {
             if (!prev) return null;
             const blob = new Blob(prev.buffers);
@@ -156,13 +176,30 @@ export default function App() {
       );
       setPc(peer);
 
-      const dc = createChatChannel(peer, handleIncomingData);
-      dc.onopen = () => {
-        console.log("✅ Chat channel open");
-        setChatChannel(dc);
-        pendingMessages.forEach((m) => dc.send(m));
-        setPendingMessages([]);
+      // Accept data channels created by the REMOTE peer (after reconnect, etc.)
+      peer.ondatachannel = (event) => {
+        const dc = event.channel;
+        dc.onmessage = (e) => handleIncomingData(e.data);
+        dc.onopen = () => {
+          setChatChannel(dc);
+          flushQueued(dc); // <-- send any queued messages
+        };
+        dc.onclose = () => setChatChannel(null);
+        dc.onerror = () => setChatChannel(null);
       };
+
+      // Create our outbound data channel (so either side can start the chat)
+      const dc = createChatChannel(peer, handleIncomingData);
+
+      // when channel opens, flush pendingMessages (use functional update to avoid stale closure)
+      dc.onopen = () => {
+        setChatChannel(dc);
+        flushQueued(dc); // <-- centralized flush
+      };
+
+      // ensure we clear chatChannel when it closes
+      dc.onclose = () => setChatChannel(null);
+      dc.onerror = () => setChatChannel(null);
 
       try {
         const stream = await navigator.mediaDevices.getUserMedia({
@@ -202,6 +239,12 @@ export default function App() {
         }
       };
 
+      socket.onclose = () => {
+        // mark as disconnected but keep pending messages for next connection
+        setStatus("disconnected");
+        setChatChannel(null);
+      };
+
       const offer = await peer.createOffer();
       await peer.setLocalDescription(offer);
       socket.send(JSON.stringify({ sdp: peer.localDescription }));
@@ -212,12 +255,21 @@ export default function App() {
   // ---- Send text ----
   const sendMessage = () => {
     if (!chatInput.trim()) return;
+
+    // show locally immediately
     setMessages((prev) => [...prev, { sender: "me", text: chatInput }]);
+
+    // if channel open -> send now, otherwise queue
     if (chatChannel && chatChannel.readyState === "open") {
-      chatChannel.send(chatInput);
+      try {
+        chatChannel.send(chatInput);
+      } catch (err) {
+        setPendingMessages((prev) => [...prev, chatInput]);
+      }
     } else {
       setPendingMessages((prev) => [...prev, chatInput]);
     }
+
     setChatInput("");
   };
 
@@ -261,194 +313,43 @@ export default function App() {
 
   return (
     <div className="app-container">
-      <Header />
-      <StatusIndicator status={status} />
-      <VideoGrid localRef={localVideo} remoteRef={remoteVideo} />
-      <RoomInput room={room} setRoom={setRoom} />
-      {timeLeft !== null && <TimerProgress timeLeft={timeLeft} />}
-
-      {status === "connected" && (
-        <div
-          style={{
-            marginTop: "1rem",
-            width: "340px",
-            height: "300px",
-            display: "flex",
-            flexDirection: "column",
-            borderRadius: "12px",
-            background: "rgba(30,30,30,0.85)",
-            backdropFilter: "blur(8px)",
-            overflow: "hidden",
-            boxShadow: "0 6px 20px rgba(0,0,0,0.4)",
-          }}
-        >
-          <div
-            style={{
-              padding: "0.6rem 1rem",
-              background: "rgba(255,255,255,0.05)",
-              borderBottom: "1px solid rgba(255,255,255,0.1)",
-              fontSize: "0.95rem",
-              color: "#ddd",
-            }}
-          >
-            💬 Chat
+      <div className="card-wrapper">
+        <Header />
+        <div className="call-card">
+          {/* Status indicator in top-right corner */}
+          <div className="status-wrapper">
+            <StatusIndicator status={status} />
           </div>
 
-          <div
-            style={{
-              flex: 1,
-              overflowY: "auto",
-              padding: "0.75rem",
-              display: "flex",
-              flexDirection: "column",
-              gap: "8px",
-            }}
-          >
-            {/* ✅ File receiving progress indicator */}
-            {receivingFile && (
-              <div style={{ color: "#ccc", fontSize: "0.8rem", margin: "4px" }}>
-                Receiving <b>{receivingFile.name}</b>…
-              </div>
-            )}
+          <VideoGrid localRef={localVideo} remoteRef={remoteVideo} />
+          <RoomInput room={room} setRoom={setRoom} />
+          {timeLeft !== null && <TimerProgress timeLeft={timeLeft} />}
 
-            {messages.map((m, i) => (
-              <div
-                key={i}
-                style={{
-                  display: "flex",
-                  justifyContent: m.sender === "me" ? "flex-end" : "flex-start",
-                }}
-              >
-                <div
-                  style={{
-                    background: m.sender === "me" ? "#4caf50" : "#2196f3",
-                    color: "#fff",
-                    padding: "8px 12px",
-                    borderRadius:
-                      m.sender === "me"
-                        ? "16px 16px 0 16px"
-                        : "16px 16px 16px 0",
-                    maxWidth: "75%",
-                    fontSize: "0.9rem",
-                    wordBreak: "break-word",
-                  }}
-                >
-                  {m.fileUrl ? (
-                    <a
-                      href={m.fileUrl}
-                      download={m.fileName}
-                      style={{
-                        color: "#fff",
-                        textDecoration: "underline",
-                      }}
-                    >
-                      📁 {m.fileName}
-                    </a>
-                  ) : (
-                    m.text
-                  )}
-                </div>
-              </div>
-            ))}
-            <div ref={chatEndRef}></div>
-          </div>
+          {/* ChatBox as separate component */}
+          <ChatBox
+            status={status}
+            messages={messages}
+            chatInput={chatInput}
+            setChatInput={setChatInput}
+            sendMessage={sendMessage}
+            sendFile={sendFile}
+            receivingFile={receivingFile}
+          />
 
-          {/* ---- Bottom bar ---- */}
-          <div
-            style={{
-              display: "flex",
-              padding: "0.5rem",
-              background: "rgba(255,255,255,0.05)",
-              borderTop: "1px solid rgba(255,255,255,0.1)",
-            }}
-          >
-            <input
-              type="file"
-              onChange={(e) => {
-                if (e.target.files.length) sendFile(e.target.files[0]);
-              }}
-              style={{ display: "none" }}
-              id="fileInput"
-            />
-            <label
-              htmlFor="fileInput"
-              style={{
-                background: "#4caf50",
-                borderRadius: "50%",
-                width: "38px",
-                height: "38px",
-                display: "flex",
-                justifyContent: "center",
-                alignItems: "center",
-                cursor: "pointer",
-                marginRight: "0.5rem",
-                fontSize: "1.1rem",
-                color: "#fff",
-              }}
-              title="Send File"
-            >
-              📎
-            </label>
-
-            <input
-              value={chatInput}
-              onChange={(e) => setChatInput(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") {
-                  e.preventDefault();
-                  sendMessage();
-                }
-              }}
-              placeholder={
-                chatChannel ? "Type a message..." : "Connecting chat..."
-              }
-              style={{
-                flex: 1,
-                padding: "0.5rem 0.75rem",
-                borderRadius: "20px",
-                border: "none",
-                fontSize: "0.9rem",
-                marginRight: "0.5rem",
-                background: "rgba(255,255,255,0.15)",
-                color: "#fff",
-                outline: "none",
-              }}
-              disabled={status !== "connected"}
-            />
+          {/* Buttons */}
+          <div className="button-group">
             <button
-              onClick={sendMessage}
-              style={{
-                background: "#4caf50",
-                border: "none",
-                color: "#fff",
-                borderRadius: "50%",
-                width: "38px",
-                height: "38px",
-                cursor: "pointer",
-                display: "flex",
-                justifyContent: "center",
-                alignItems: "center",
-                fontSize: "1.1rem",
-              }}
-              title="Send Message"
+              onClick={startCall}
+              disabled={!!pc || !!ws}
+              className={`btn ${pc || ws ? "btn-disabled" : "btn-green"}`}
             >
-              ➤
+              <FaPhone /> Start Call
+            </button>
+            <button onClick={disconnect} className="btn btn-red">
+              <FaPhoneSlash /> Disconnect
             </button>
           </div>
         </div>
-      )}
-
-      <div className="button-group">
-        <button
-          onClick={startCall}
-          disabled={pc || ws}
-          className={`btn ${pc || ws ? "btn-disabled" : "btn-green"}`}
-        >
-          📞 Start Call
-        </button>
-        <button onClick={disconnect} className="btn btn-red">
-          ❌ Disconnect
-        </button>
       </div>
     </div>
   );
