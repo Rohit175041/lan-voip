@@ -32,10 +32,10 @@ export default function ChatBox({
   return (
     <div className="chat-container">
       {/* ===== Header ===== */}
-      <div className="chat-header">
+      {/* <div className="chat-header">
         <span>💬 Chat</span>
         <span className={`chat-status ${status}`}>{status}</span>
-      </div>
+      </div> */}
 
       {/* ===== Messages ===== */}
       <div className="chat-messages">
