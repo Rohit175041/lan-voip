@@ -83,7 +83,7 @@ export default function App() {
 
     try {
       if (chatChannel && chatChannel.readyState !== "closed") chatChannel.close();
-    } catch (_) {}
+    } catch (_) { }
 
     cleanupPeerConnection(pc, ws, localVideo, remoteVideo);
 
@@ -340,7 +340,7 @@ export default function App() {
     return () => {
       try {
         disconnect();
-      } catch (_) {}
+      } catch (_) { }
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -356,7 +356,9 @@ export default function App() {
           </div>
 
           <VideoGrid localRef={localVideo} remoteRef={remoteVideo} />
-          <RoomInput room={room} setRoom={setRoom} />
+          {status !== "connected" && (
+            <RoomInput room={room} setRoom={setRoom} />
+          )}
           {timeLeft !== null && <TimerProgress timeLeft={timeLeft} />}
 
           <ChatBox
