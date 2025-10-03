@@ -7,15 +7,24 @@
  * @param {Function} onConnected      - Called when remote media is attached.
  */
 export function createPeerConnection(socket, localVideo, remoteVideo, onConnected) {
-  const iceServers =
+  // ---- Build ICE server list ----
+  const iceUrls =
     process.env.REACT_APP_ICE_SERVERS
-      ? process.env.REACT_APP_ICE_SERVERS.split(",").map((url) => url.trim())
+      ? process.env.REACT_APP_ICE_SERVERS.split(",").map((u) => u.trim())
       : ["stun:stun.l.google.com:19302"];
 
-  const peer = new RTCPeerConnection({ iceServers: [{ urls: iceServers }] });
+  const configuration = {
+    iceServers: [
+      { urls: iceUrls },
+      // 👉 ADD YOUR TURN SERVER HERE for production:
+      // { urls: "turn:turn.yourdomain.com:3478", username: "user", credential: "pass" },
+    ],
+  };
+
+  const pc = new RTCPeerConnection(configuration);
 
   // ---- ICE candidates ----
-  peer.onicecandidate = (e) => {
+  pc.onicecandidate = (e) => {
     if (e.candidate && socket?.readyState === WebSocket.OPEN) {
       try {
         socket.send(JSON.stringify({ ice: e.candidate }));
@@ -25,32 +34,36 @@ export function createPeerConnection(socket, localVideo, remoteVideo, onConnecte
     }
   };
 
+  // ---- ICE connection state logs ----
+  pc.oniceconnectionstatechange = () => {
+    console.log("🌐 ICE state:", pc.iceConnectionState);
+    if (pc.iceConnectionState === "failed" || pc.iceConnectionState === "disconnected") {
+      console.warn("⚠️ ICE failed or disconnected — likely need TURN");
+    }
+  };
+
   // ---- Remote track ----
-  peer.ontrack = (e) => {
+  pc.ontrack = (e) => {
     if (remoteVideo?.current && e.streams[0]) {
       remoteVideo.current.srcObject = e.streams[0];
     }
     if (typeof onConnected === "function") onConnected();
   };
 
-  // ✅ DataChannel only handled in App.js
-  return peer;
+  return pc;
 }
 
 /**
  * Caller creates the DataChannel
  */
-export function createChatChannel(peer, onMessage) {
-  const dc = peer.createDataChannel("chat");
+export function createChatChannel(pc, onMessage) {
+  const dc = pc.createDataChannel("chat");
   dc.binaryType = "arraybuffer";
 
-  dc.onopen = () => console.log("✅ DataChannel open (caller)");
-  dc.onclose = () => console.log("⚠️ DataChannel closed (caller)");
+  dc.onopen = () => console.log("✅ DataChannel open");
+  dc.onclose = () => console.log("⚠️ DataChannel closed");
   dc.onerror = (err) => console.error("⚠️ DataChannel error:", err);
-
-  dc.onmessage = (e) => {
-    if (typeof onMessage === "function") onMessage(e.data);
-  };
+  dc.onmessage = (e) => onMessage?.(e.data);
 
   return dc;
 }
@@ -59,32 +72,13 @@ export function createChatChannel(peer, onMessage) {
  * Cleanup PeerConnection and WebSocket safely.
  */
 export function cleanupPeerConnection(pc, ws, localVideo, remoteVideo) {
-  // Stop local video/audio
   if (localVideo?.current?.srcObject) {
     localVideo.current.srcObject.getTracks().forEach((t) => t.stop());
     localVideo.current.srcObject = null;
   }
-
-  // Clear remote stream
   if (remoteVideo?.current) {
     remoteVideo.current.srcObject = null;
   }
-
-  // Close PeerConnection
-  if (pc) {
-    try {
-      pc.close();
-    } catch (err) {
-      console.warn("⚠️ PeerConnection close error:", err);
-    }
-  }
-
-  // Always try to close WebSocket if it exists
-  if (ws) {
-    try {
-      ws.close();
-    } catch (err) {
-      console.warn("⚠️ WebSocket close error:", err);
-    }
-  }
+  try { pc?.close(); } catch (err) { console.warn("⚠️ Peer close error:", err); }
+  try { ws?.close(); } catch (err) { console.warn("⚠️ WS close error:", err); }
 }
