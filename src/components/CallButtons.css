@@ -42,15 +42,21 @@
   background: linear-gradient(145deg, #00b248, #00c853);
 }
 
-/* Red button with modern glow */
+/* ✅ Glassy pink outlined button */
 .btn-red {
-  background: linear-gradient(145deg, #d32f2f, #f44336);
-  color: white;
-  box-shadow: 0 4px 12px rgba(244, 67, 54, 0.3);
+  background: transparent; /* transparent frosted look */
+  color: #ffb3b3;          /* soft pink text */
+  border: 1px solid rgba(255, 179, 179, 0.4); /* subtle pink border */
+  box-shadow: none;        /* no heavy shadow */
+  backdrop-filter: blur(6px);
 }
+
 .btn-red:hover {
-  background: linear-gradient(145deg, #b71c1c, #d32f2f);
+  background: rgba(255, 179, 179, 0.08); /* light frosted pink on hover */
+  border-color: rgba(255, 179, 179, 0.6);
+  color: #ffc2c2; /* slightly brighter pink */
 }
+
 
 .btn-disabled {
   background: #555;
