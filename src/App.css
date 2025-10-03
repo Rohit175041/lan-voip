@@ -38,7 +38,7 @@
   border-radius: 20px;
   padding: 1.2rem;
   width: 100%;
-  max-width: 650px; /* ✅ slightly wider for better fit */
+  max-width: 650px;
   text-align: center;
   box-shadow: 0 6px 24px rgba(0, 0, 0, 0.35);
   position: relative;
@@ -48,7 +48,7 @@
 /* 🎥 Video Grid */
 .video-grid {
   display: flex;
-  flex-wrap: nowrap;       /* ✅ always side-by-side */
+  flex-wrap: nowrap; 
   justify-content: center;
   gap: 1rem;
   margin: 1rem 0;
@@ -58,7 +58,8 @@
 .video-card {
   position: relative;
   flex: 1 1 50%;
-  max-width: 48%;          /* ✅ better balance */
+  max-width: 48%;
+  min-width: 0;              /* ✅ allow shrinking */
   aspect-ratio: 16 / 9;
   background: rgba(0, 0, 0, 0.7);
   border-radius: 12px;
@@ -94,7 +95,7 @@
 
 .room-input-wrapper {
   width: 100%;
-  max-width: 420px; /* ✅ slightly wider */
+  max-width: 420px;
   background: rgba(255, 255, 255, 0.08);
   border-radius: 25px;
   padding: 0.6rem 1.2rem;
@@ -104,6 +105,7 @@
   backdrop-filter: blur(6px);
   transition: box-shadow 0.3s ease, border 0.3s ease;
   margin: 0 auto;
+  min-width: 0;             /* ✅ allow shrinking */
 }
 
 .room-input {
@@ -131,7 +133,7 @@
   display: flex;
   justify-content: center;
   gap: 1rem;
-  flex-wrap: nowrap; /* ✅ always in one row */
+  flex-wrap: nowrap; 
   width: 100%;
   max-width: 420px;
   margin: 0 auto;
@@ -150,7 +152,7 @@
   cursor: pointer;
   transition: all 0.2s ease;
   flex: 1;
-  min-width: 120px;
+  min-width: 0;             /* ✅ allow shrinking */
 }
 
 .btn svg {
@@ -195,6 +197,7 @@
   .video-card {
     max-width: 50%;
     flex: 1;
+    min-width: 0; /* ✅ fix overflow */
   }
 
   /* ✅ Keep buttons horizontal */
@@ -211,5 +214,23 @@
 
   .room-input-wrapper {
     max-width: 100%;
+    min-width: 0;
+  }
+}
+
+/* 📱 Extra Small Devices (<480px) */
+@media (max-width: 480px) {
+  .video-card {
+    max-width: 48%; 
+    aspect-ratio: 4 / 3;     /* ✅ less tall for phones */
+  }
+
+  .btn {
+    font-size: 0.85rem;
+    padding: 0.6rem 0.8rem;
+  }
+
+  .room-input {
+    font-size: 0.85rem;
   }
 }
