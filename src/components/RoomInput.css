@@ -1,100 +1,16 @@
-/* 🌌 App Background */
-.app-container {
-  min-height: 100vh;
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  background: radial-gradient(circle at top, #0f2027, #1b2730, #0d141a);
-  font-family: "Poppins", sans-serif;
-  color: #fff;
-  padding: 1rem;
-  box-sizing: border-box;
-}
-
-/* Wrapper for header + card */
-.card-wrapper {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 1rem;
-  width: 100%;
-}
-
-/* Title/Header */
-.header-title {
-  font-size: 1.6rem;
-  font-weight: 600;
-  text-align: center;
-  color: #f8f9fa;
-  margin-bottom: 0.5rem;
-  text-shadow: 0 2px 10px rgba(0, 0, 0, 0.5);
-  line-height: 1.3;
-}
-
-/* 🪟 Main Glass Card */
-.call-card {
-  background: rgba(255, 255, 255, 0.08); /* glass effect */
-  backdrop-filter: blur(20px);
-  border-radius: 20px;
-  padding: 1.5rem;
-  width: 100%;
-  max-width: 650px;
-  text-align: center;
-  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.4);
-  position: relative;
-  overflow: hidden;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-}
-
-/* 🎥 Video Grid */
-.video-grid {
-  display: flex;
-  flex-wrap: nowrap; 
-  justify-content: center;
-  gap: 1rem;
-  margin: 1rem 0;
-  width: 100%;
-}
-
-.video-card {
-  position: relative;
-  flex: 1 1 50%;
-  max-width: 48%;
-  min-width: 0;
-  aspect-ratio: 16 / 9;
-  background: rgba(0, 0, 0, 0.45);
-  border-radius: 14px;
-  overflow: hidden;
-  box-shadow: 0 2px 12px rgba(0,0,0,0.4);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-}
-
-.video-element {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-}
-
-.video-label {
-  position: absolute;
-  bottom: 8px;
-  right: 8px;
-  background: rgba(0, 0, 0, 0.55);
-  padding: 3px 10px;
-  border-radius: 14px;
-  font-size: 0.75rem;
-  font-weight: 500;
-  color: #fff;
-}
-
-/* ⌨️ Room Input */
+/* =======================
+   ROOM INPUT CONTAINER
+   ======================= */
 .room-container {
   margin: 1rem 0;
   display: flex;
+  flex-direction: column; /* ✅ stack input + error vertically */
   justify-content: center;
+  align-items: center;
   width: 100%;
 }
 
+/* Outer wrapper */
 .room-input-wrapper {
   width: 100%;
   max-width: 420px;
@@ -111,6 +27,7 @@
   border: 1px solid rgba(255, 255, 255, 0.1);
 }
 
+/* Input field */
 .room-input {
   flex: 1;
   border: none;
@@ -125,45 +42,48 @@
   color: rgba(255, 255, 255, 0.4);
 }
 
+/* Highlight when focused */
 .room-input-wrapper:focus-within {
   box-shadow: 0 0 0 2px #00e676, 0 0 12px rgba(0, 230, 118, 0.7);
   border: none;
 }
 
-/* 📱 Responsive Tweaks */
+/* Error state */
+.room-input-error {
+  box-shadow: 0 0 0 2px #ff4d4d, 0 0 10px rgba(255, 77, 77, 0.5);
+  border: none;
+}
+
+/* Error message */
+.room-error {
+  color: #ff4d4d;
+  font-size: 0.8rem;
+  margin-top: 0.4rem;
+  text-align: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+
+.room-error::before {
+  content: "⚠";
+  font-size: 0.9rem;
+}
+
+/* 📱 Responsive tweaks */
 @media (max-width: 768px) {
-  .header-title {
-    font-size: 1.3rem;
-  }
-  .call-card {
-    padding: 1rem;
-    max-width: 100%;
-  }
-
-  .video-grid {
-    flex-direction: row;
-    flex-wrap: nowrap;
-    gap: 0.5rem;
-  }
-  .video-card {
-    max-width: 50%;
-    flex: 1;
-    min-width: 0;
-  }
-
   .room-input-wrapper {
     max-width: 100%;
     min-width: 0;
   }
+
+  .room-input {
+    font-size: 0.9rem;
+  }
 }
 
-/* 📱 Extra Small Devices (<480px) */
 @media (max-width: 480px) {
-  .video-card {
-    max-width: 48%;
-    aspect-ratio: 4 / 3;
-  }
-
   .room-input {
     font-size: 0.85rem;
   }
