@@ -100,10 +100,9 @@ A **React-based real-time video calling app** that enables two users to connect 
 
 ## 🔮 Future Improvements
 
-* 📱 Group video calls (multi-peer)
+* 📱 video call (p2p)
 * 🔐 End-to-end encryption for chat/files
-* 🎤 Mute/unmute & camera toggle
-* 🌐 Deploy signaling server on cloud (Heroku/Render/Vercel)
+* 🌐 Deploy signaling server on cloud (Render)
 
 
 ### 👨‍💻 Author
