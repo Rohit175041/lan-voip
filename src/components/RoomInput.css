@@ -8,6 +8,8 @@
   justify-content: center;
   align-items: center;
   width: 100%;
+  padding: 0 0.5rem;       /* ✅ prevent edge clipping */
+  box-sizing: border-box;
 }
 
 /* Outer wrapper */
@@ -23,13 +25,15 @@
   backdrop-filter: blur(10px);
   transition: box-shadow 0.3s ease, border 0.3s ease;
   margin: 0 auto;
-  min-width: 0;
+  min-width: 0;               /* ✅ allow shrinking */
+  box-sizing: border-box;     /* ✅ ensures padding is inside width */
   border: 1px solid rgba(255, 255, 255, 0.1);
 }
 
 /* Input field */
 .room-input {
   flex: 1;
+  min-width: 0;               /* ✅ critical: prevents overflow */
   border: none;
   background: transparent;
   text-align: center;
@@ -84,6 +88,11 @@
 }
 
 @media (max-width: 480px) {
+  .room-input-wrapper {
+    max-width: 100%;   /* ✅ full width inside card */
+    padding: 0.5rem 1rem;
+  }
+
   .room-input {
     font-size: 0.85rem;
   }
