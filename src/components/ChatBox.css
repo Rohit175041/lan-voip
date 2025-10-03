@@ -4,36 +4,13 @@
 .chat-container {
   display: flex;
   flex-direction: column;
-  max-height: 35vh; /* adjust as you like */
-  background: #0c1317; /* dark bg similar to WhatsApp */
+  max-height: 50vh;         /* ✅ more space */
+  background: #0c1317;      /* dark bg similar to WhatsApp */
   border-radius: 12px;
   overflow: hidden;
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
-}
-
-/*  =======================
-   HEADER
-   ======================= */
-/* .chat-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 2px 16px;
-  background: rgba(255, 255, 255, 0.08);
-  font-weight: 600;
-  color: #fff;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-} */ 
-
-.chat-status {
-  font-size: 0.8rem;
-  text-transform: capitalize;
-}
-.chat-status.connected {
-  color: #90ee90;
-}
-.chat-status.disconnected {
-  color: #f08080;
+  width: 100%;
+  margin-top: 1rem;
 }
 
 /* =======================
@@ -61,42 +38,37 @@
    MESSAGE BUBBLES
    ======================= */
 .chat-message {
-  max-width: 70%;
+  max-width: 75%;           /* ✅ slightly wider */
   background: #005c4b;
   border-radius: 8px;
-  font-size: 0.78rem;
+  font-size: 0.85rem;
   line-height: 1.4;
   color: #fff;
   word-wrap: break-word;
 
-  /* Flex so text and time sit on same baseline */
   display: inline-flex;
   align-items: flex-end;
   padding: 6px 10px;
   position: relative;
-  
 }
 
 .chat-message.me {
   background: #005c4b; /* WhatsApp green */
-  border-top-right-radius: 0; /* create tail effect */
+  border-top-right-radius: 0;
 }
-
 .chat-message.remote {
   background: #202c33; /* WhatsApp gray */
   border-top-left-radius: 0;
 }
 
-/* Time INSIDE bubble */
-/* Time inside the bubble - WhatsApp style */
+/* Time inside the bubble */
 .msg-time {
-  font-size: 0.5rem;
+  font-size: 0.65rem;
   color: rgba(255, 255, 255, 0.6);
-  margin-left: 6px;           /* gap from text */
-  white-space: nowrap;        /* prevent wrap */
-  align-self: flex-end;       /* keeps it at text bottom */
+  margin-left: 6px;
+  white-space: nowrap;
+  align-self: flex-end;
 }
-
 
 /* =======================
    FILES
@@ -106,7 +78,6 @@
   color: #f1c40f;
   margin-bottom: 0.4rem;
 }
-
 .file-link {
   color: #fff;
   text-decoration: underline;
@@ -118,6 +89,7 @@
 .chat-footer {
   display: flex;
   align-items: center;
+  gap: 0.5rem;
   padding: 8px;
   background: #202c33;
   border-top: 1px solid rgba(255, 255, 255, 0.1);
@@ -133,7 +105,6 @@
   align-items: center;
   cursor: pointer;
   color: #bbb;
-  margin-right: 8px;
   transition: color 0.2s;
 }
 .file-btn:hover {
@@ -148,6 +119,7 @@
   outline: none;
   background: #2a3942;
   color: #fff;
+  font-size: 0.9rem;
 }
 
 .chat-btn {
@@ -159,10 +131,43 @@
   justify-content: center;
   align-items: center;
   cursor: pointer;
-  margin-left: 6px;
   color: #00a884;
   transition: color 0.2s;
 }
 .chat-btn:hover {
   color: #20c997;
+}
+
+/* =======================
+   RESPONSIVE
+   ======================= */
+@media (max-width: 768px) {
+  .chat-container {
+    max-height: 45vh;  /* ✅ more usable space on tablets */
+  }
+  .chat-message {
+    max-width: 85%;   /* ✅ allow bigger bubbles on small screens */
+    font-size: 0.8rem;
+  }
+  .msg-time {
+    font-size: 0.55rem;
+  }
+}
+
+@media (max-width: 480px) {
+  .chat-container {
+    max-height: 50vh; /* ✅ give chat more room on phones */
+  }
+  .chat-footer {
+    flex-direction: row;
+    gap: 0.3rem;
+  }
+  .chat-input {
+    font-size: 0.8rem;
+    padding: 0.4rem 0.8rem;
+  }
+  .chat-btn, .file-btn {
+    width: 32px;
+    height: 32px;
+  }
 }

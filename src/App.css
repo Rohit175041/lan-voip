@@ -7,6 +7,8 @@
   background: linear-gradient(135deg, #0f2027, #203a43, #2c5364);
   font-family: "Poppins", sans-serif;
   color: #fff;
+  padding: 1rem;
+  box-sizing: border-box;
 }
 
 /* Wrapper for header + card */
@@ -15,43 +17,49 @@
   flex-direction: column;
   align-items: center;
   gap: 1rem;
+  width: 100%;
 }
 
 /* Title/Header */
 .header-title {
-  font-size: 1.5rem;
-  font-weight: 500;
+  font-size: 1.6rem;
+  font-weight: 600;
   text-align: center;
   color: #fff;
   margin-bottom: 0.5rem;
-  text-shadow: 0 2px 6px rgba(0, 0, 0, 0.35); /* subtle glow */
+  text-shadow: 0 2px 6px rgba(0, 0, 0, 0.35);
+  line-height: 1.3;
 }
 
 /* 🪟 Main Glass Card */
 .call-card {
-  background: rgba(255, 255, 255, 0.05);
+  background: rgba(255, 255, 255, 0.06);
   backdrop-filter: blur(15px);
   border-radius: 20px;
-  padding: 1.5rem;
-  width: 600px;
-  max-width: 95%;
+  padding: 1.2rem;
+  width: 100%;
+  max-width: 600px;
   text-align: center;
   box-shadow: 0 6px 24px rgba(0, 0, 0, 0.35);
   position: relative;
+  overflow: hidden;
 }
 
 /* 🎥 Video Grid */
 .video-grid {
   display: flex;
+  flex-wrap: wrap;
   justify-content: center;
   gap: 1rem;
   margin: 1rem 0;
+  width: 100%;
 }
 
 .video-card {
-  flex: 1;
-  max-width: 260px;
-  height: 150px;
+  flex: 1 1 50%;
+  max-width: 300px;     /* ✅ balanced size */
+  min-width: 240px;
+  aspect-ratio: 16 / 9;
   background: rgba(0, 0, 0, 0.7);
   border-radius: 12px;
   overflow: hidden;
@@ -68,7 +76,7 @@
   position: absolute;
   bottom: 8px;
   right: 8px;
-  background: rgba(0, 0, 0, 0.7);
+  background: rgba(0, 0, 0, 0.65);
   padding: 3px 8px;
   border-radius: 14px;
   font-size: 0.75rem;
@@ -78,15 +86,19 @@
 
 /* 🟢 Status Indicator */
 .status-wrapper {
-  position: absolute;
-  top: 10px;
-  right: 12px;
+  display: flex;
+  justify-content: center;
+  width: 100%;
+  max-width: 400px;    /* ✅ reduced to match inputs/buttons */
+  margin: 0 auto;
 }
 
 .status-pill {
-  padding: 4px 10px;
-  border-radius: 14px;
-  font-size: 0.75rem;
+  flex: 1;
+  text-align: center;
+  padding: 0.6rem 1rem;
+  border-radius: 25px;
+  font-size: 0.85rem;
   font-weight: 500;
   color: #fff;
   background: rgba(255, 255, 255, 0.12);
@@ -94,11 +106,11 @@
 }
 
 .status-pill.connected {
-  background: #27ae60;
+  background: rgba(39, 174, 96, 0.8);
 }
 
 .status-pill.disconnected {
-  background: #e74c3c;
+  background: rgba(231, 76, 60, 0.8);
 }
 
 /* ⌨️ Room Input */
@@ -106,19 +118,21 @@
   margin: 1rem 0;
   display: flex;
   justify-content: center;
+  width: 100%;
 }
 
 .room-input-wrapper {
   width: 100%;
-  max-width: 400px;
+  max-width: 400px;   /* ✅ narrower for cleaner desktop look */
   background: rgba(255, 255, 255, 0.08);
   border-radius: 25px;
-  padding: 0.5rem 1rem;
+  padding: 0.7rem 1.2rem;
   display: flex;
   justify-content: center;
   align-items: center;
   backdrop-filter: blur(6px);
   transition: box-shadow 0.3s ease, border 0.3s ease;
+  margin: 0 auto;
 }
 
 .room-input {
@@ -135,11 +149,6 @@
   color: rgba(255, 255, 255, 0.5);
 }
 
-/* Focus effect for input */
-.room-input:focus {
-  outline: none;
-}
-
 .room-input-wrapper:focus-within {
   box-shadow: 0 0 0 2px #2ecc71, 0 0 12px rgba(46, 204, 113, 0.7);
   border: none;
@@ -151,6 +160,10 @@
   display: flex;
   justify-content: center;
   gap: 1rem;
+  flex-wrap: wrap;
+  width: 100%;
+  max-width: 400px;   /* ✅ match input box */
+  margin: 0 auto;
 }
 
 .btn {
@@ -158,14 +171,15 @@
   align-items: center;
   justify-content: center;
   gap: 0.5rem;
-  padding: 0.65rem 1.4rem;
+  padding: 0.8rem 1.2rem;
   font-size: 0.95rem;
   font-weight: 500;
   border: none;
-  border-radius: 20px;
+  border-radius: 25px;
   cursor: pointer;
   transition: all 0.2s ease;
-  min-width: 140px;
+  flex: 1;
+  min-width: 120px;
 }
 
 .btn svg {
@@ -190,4 +204,31 @@
 .btn-disabled {
   background: #9e9e9e;
   cursor: not-allowed;
+}
+
+/* 📱 Responsive Tweaks */
+@media (max-width: 768px) {
+  .header-title {
+    font-size: 1.3rem;
+  }
+  .call-card {
+    padding: 1rem;
+  }
+  .video-card,
+  .room-input-wrapper,
+  .button-group,
+  .status-wrapper {
+    flex: 1 1 100%;
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: auto !important;
+  }
+  .button-group {
+    flex-direction: column;
+    gap: 0.6rem;
+  }
+  .btn {
+    width: 100%;
+    border-radius: 30px;
+  }
 }

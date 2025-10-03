@@ -1,45 +1,25 @@
-/* Container */
-.status-indicator {
-  display: flex;
-  justify-content: center;
-  margin-bottom: 1rem;
+/* Small status circle */
+.status-ball {
+  position: absolute;
+  top: 10px;
+  right: 10px;   /* ✅ top-right corner of video card */
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  box-shadow: 0 0 6px rgba(0, 0, 0, 0.4);
 }
 
-/* Base Glass Style */
-.status-pill {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 6px 16px;
-  border-radius: 25px;
-  font-size: 0.9rem;
-  font-weight: 500;
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  transition: all 0.3s ease;
+/* Connected = green */
+.status-ball.connected {
+  background-color: #27ae60;
 }
 
-/* Icon */
-.status-icon {
-  font-size: 1rem;
+/* Waiting = yellow */
+.status-ball.waiting {
+  background-color: #f1c40f;
 }
 
-/* ✅ Connected */
-.status-pill.connected {
-  background: rgba(46, 204, 113, 0.15);
-  /* color: #2ecc71; */
-}
-
-/* ⏳ Waiting */
-.status-pill.waiting {
-  background: rgba(241, 196, 15, 0.15);
-  /* color: #f1c40f; */
-}
-
-/* ❌ Disconnected */
-.status-pill.disconnected {
-  background: rgba(231, 76, 60, 0.15);
-  /* color: #e74c3c; */
+/* Disconnected = red */
+.status-ball.disconnected {
+  background-color: #e74c3c;
 }
