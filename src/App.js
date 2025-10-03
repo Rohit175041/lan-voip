@@ -32,7 +32,7 @@ export default function App() {
   const [messages, setMessages] = useState([]);
   const [chatChannel, setChatChannel] = useState(null);
   const [chatInput, setChatInput] = useState("");
-  const [pendingMessages, setPendingMessages] = useState([]);
+  const [, setPendingMessages] = useState([]);
   const [receivingFile, setReceivingFile] = useState(null);
 
   // ---- Timer helpers ----
