@@ -436,7 +436,6 @@ export default function App() {
           <VideoGrid localRef={localVideo} remoteRef={remoteVideo} />
           {status !== "connected" && <RoomInput room={room} setRoom={setRoom} />}
           {timeLeft !== null && <TimerProgress timeLeft={timeLeft} />}
-
           <ChatBox
             status={status}
             messages={messages}
