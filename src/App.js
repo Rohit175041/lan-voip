@@ -35,7 +35,7 @@ export default function App() {
   const [pendingMessages, setPendingMessages] = useState([]);
   const [receivingFile, setReceivingFile] = useState(null);
 
-  // ---- Timer ----
+  // ---- Timer helpers ----
   const startTimer = (seconds) => {
     stopTimer();
     setTimeLeft(seconds);
@@ -59,29 +59,30 @@ export default function App() {
     setTimeLeft(null);
   };
 
-  // Helper: flush queued chat to an open channel
+  // ---- Flush queued messages ----
   const flushQueued = (dc) => {
     setPendingMessages((queued) => {
-      if (dc && dc.readyState === "open" && queued && queued.length) {
+      if (dc && dc.readyState === "open" && queued.length) {
         try {
           queued.forEach((m) => dc.send(m));
+          console.log(`✅ Flushed ${queued.length} pending messages`);
+          return [];
         } catch (err) {
-          console.warn("Failed flushing queued messages:", err);
+          console.warn("⚠️ Failed flushing queued messages:", err);
           return queued;
         }
       }
-      return []; // clear on success
+      return queued;
     });
   };
 
-  // ---- Disconnect / cleanup ----
+  // ---- Disconnect ----
   const disconnect = () => {
     stopTimer();
     setStatus("disconnected");
+
     try {
-      if (chatChannel && chatChannel.readyState !== "closed") {
-        chatChannel.close();
-      }
+      if (chatChannel && chatChannel.readyState !== "closed") chatChannel.close();
     } catch (_) {}
 
     cleanupPeerConnection(pc, ws, localVideo, remoteVideo);
@@ -89,11 +90,12 @@ export default function App() {
     setPc(null);
     setWs(null);
     setChatChannel(null);
+    // ✅ Keep pendingMessages so they flush after reconnect
     setMessages([]);
     setReceivingFile(null);
   };
 
-  // ---- Incoming data ----
+  // ---- Incoming data (chat or file) ----
   const handleIncomingData = (data) => {
     if (data instanceof ArrayBuffer) {
       setReceivingFile((prev) =>
@@ -101,6 +103,7 @@ export default function App() {
       );
       return;
     }
+
     if (data instanceof Blob) {
       data.arrayBuffer().then((buf) =>
         setReceivingFile((prev) =>
@@ -109,6 +112,7 @@ export default function App() {
       );
       return;
     }
+
     if (typeof data === "string") {
       try {
         const obj = JSON.parse(data);
@@ -140,6 +144,27 @@ export default function App() {
     }
   };
 
+  // ---- Setup DataChannel (inbound or outbound) ----
+  const setupDataChannel = (dc, label) => {
+    dc.binaryType = "arraybuffer";
+    dc.onmessage = (e) => handleIncomingData(e.data);
+    dc.onopen = () => {
+      console.log(`✅ DataChannel open (${label})`);
+      setChatChannel(dc);
+      flushQueued(dc);
+      stopTimer();
+      setStatus("connected");
+    };
+    dc.onclose = () => {
+      console.log(`⚠️ DataChannel closed (${label})`);
+      setChatChannel(null);
+    };
+    dc.onerror = (err) => {
+      console.error(`⚠️ DataChannel error (${label}):`, err);
+      setChatChannel(null);
+    };
+  };
+
   // ---- Start Call ----
   const startCall = async () => {
     if (!room.trim()) {
@@ -162,34 +187,21 @@ export default function App() {
         localVideo,
         remoteVideo,
         () => {
+          console.log("🎥 Remote track received");
           stopTimer();
           setStatus("connected");
-        },
-        handleIncomingData
+        }
       );
       setPc(peer);
 
-      // Accept remote data channels
-      peer.ondatachannel = (event) => {
-        const dc = event.channel;
-        dc.onmessage = (e) => handleIncomingData(e.data);
-        dc.onopen = () => {
-          setChatChannel(dc);
-          flushQueued(dc);
-        };
-        dc.onclose = () => setChatChannel(null);
-        dc.onerror = () => setChatChannel(null);
-      };
+      // Inbound DC
+      peer.ondatachannel = (event) => setupDataChannel(event.channel, "inbound");
 
-      // Create our outbound chat channel
+      // Outbound DC
       const dc = createChatChannel(peer, handleIncomingData);
-      dc.onopen = () => {
-        setChatChannel(dc);
-        flushQueued(dc);
-      };
-      dc.onclose = () => setChatChannel(null);
-      dc.onerror = () => setChatChannel(null);
+      setupDataChannel(dc, "outbound");
 
+      // Get local media
       try {
         const stream = await navigator.mediaDevices.getUserMedia({
           video: true,
@@ -203,50 +215,31 @@ export default function App() {
         return;
       }
 
-      // --- Handle signaling messages ---
+      // Handle signaling
       socket.onmessage = async (event) => {
         const data = JSON.parse(event.data);
+        console.log("📩 Signaling:", data);
 
         if (data.sdp) {
-          const desc = new RTCSessionDescription(data.sdp);
-
-          // ✅ Guards against duplicate/invalid SDP
-          if (desc.type === "answer" && peer.signalingState === "stable") {
-            console.warn("Skipping duplicate answer, already stable");
-            return;
-          }
-          if (desc.type === "offer" && peer.signalingState !== "stable") {
-            console.warn("Skipping unexpected offer, state:", peer.signalingState);
-            return;
-          }
-
-          try {
-            await peer.setRemoteDescription(desc);
-
-            if (desc.type === "offer") {
-              const answer = await peer.createAnswer();
-              await peer.setLocalDescription(answer);
-              socket.send(JSON.stringify({ sdp: peer.localDescription }));
-            }
-          } catch (err) {
-            console.error(
-              "❌ Failed to setRemoteDescription:",
-              err,
-              "state:",
-              peer.signalingState
-            );
+          await peer.setRemoteDescription(new RTCSessionDescription(data.sdp));
+          if (data.sdp.type === "offer") {
+            const answer = await peer.createAnswer();
+            await peer.setLocalDescription(answer);
+            socket.send(JSON.stringify({ sdp: peer.localDescription }));
+            stopTimer();
+            setStatus("connected");
           }
         } else if (data.ice) {
           try {
             await peer.addIceCandidate(new RTCIceCandidate(data.ice));
           } catch (err) {
-            console.warn("Error adding ICE candidate", err);
+            console.warn("⚠️ addIceCandidate failed:", err);
           }
         } else if (data.type === "roomSize") {
           if (data.count >= 2) {
             stopTimer();
             setStatus("connected");
-          } else if (data.count === 1) {
+          } else {
             startTimer(120);
             setStatus("waiting");
           }
@@ -257,14 +250,20 @@ export default function App() {
       };
 
       socket.onclose = () => {
+        console.warn("⚠️ WebSocket closed");
         setStatus("disconnected");
         setChatChannel(null);
       };
 
-      const offer = await peer.createOffer();
-      await peer.setLocalDescription(offer);
-      socket.send(JSON.stringify({ sdp: peer.localDescription }));
-      startTimer(120);
+      // Caller: send offer
+      try {
+        const offer = await peer.createOffer();
+        await peer.setLocalDescription(offer);
+        socket.send(JSON.stringify({ sdp: peer.localDescription }));
+        startTimer(120);
+      } catch (err) {
+        console.error("❌ Failed to create/send offer:", err);
+      }
     };
   };
 
@@ -323,6 +322,7 @@ export default function App() {
     ]);
   };
 
+  // ---- UI (unchanged) ----
   return (
     <div className="app-container">
       <div className="card-wrapper">
