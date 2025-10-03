@@ -67,7 +67,6 @@ export default function App() {
           queued.forEach((m) => dc.send(m));
         } catch (err) {
           console.warn("Failed flushing queued messages:", err);
-          // keep queue if sending failed
           return queued;
         }
       }
@@ -79,22 +78,18 @@ export default function App() {
   const disconnect = () => {
     stopTimer();
     setStatus("disconnected");
-
-    // proactively close current chat channel to avoid sending on a zombie channel
     try {
       if (chatChannel && chatChannel.readyState !== "closed") {
         chatChannel.close();
       }
     } catch (_) {}
 
-    // cleanup PeerConnection / WS / video elements
     cleanupPeerConnection(pc, ws, localVideo, remoteVideo);
 
     setPc(null);
     setWs(null);
-    // keep pendingMessages! do not clear them so they can be flushed after reconnect
     setChatChannel(null);
-    setMessages([]); // keep/clear based on your UX preference
+    setMessages([]);
     setReceivingFile(null);
   };
 
@@ -106,7 +101,6 @@ export default function App() {
       );
       return;
     }
-
     if (data instanceof Blob) {
       data.arrayBuffer().then((buf) =>
         setReceivingFile((prev) =>
@@ -115,7 +109,6 @@ export default function App() {
       );
       return;
     }
-
     if (typeof data === "string") {
       try {
         const obj = JSON.parse(data);
@@ -176,28 +169,24 @@ export default function App() {
       );
       setPc(peer);
 
-      // Accept data channels created by the REMOTE peer (after reconnect, etc.)
+      // Accept remote data channels
       peer.ondatachannel = (event) => {
         const dc = event.channel;
         dc.onmessage = (e) => handleIncomingData(e.data);
         dc.onopen = () => {
           setChatChannel(dc);
-          flushQueued(dc); // <-- send any queued messages
+          flushQueued(dc);
         };
         dc.onclose = () => setChatChannel(null);
         dc.onerror = () => setChatChannel(null);
       };
 
-      // Create our outbound data channel (so either side can start the chat)
+      // Create our outbound chat channel
       const dc = createChatChannel(peer, handleIncomingData);
-
-      // when channel opens, flush pendingMessages (use functional update to avoid stale closure)
       dc.onopen = () => {
         setChatChannel(dc);
-        flushQueued(dc); // <-- centralized flush
+        flushQueued(dc);
       };
-
-      // ensure we clear chatChannel when it closes
       dc.onclose = () => setChatChannel(null);
       dc.onerror = () => setChatChannel(null);
 
@@ -214,17 +203,45 @@ export default function App() {
         return;
       }
 
+      // --- Handle signaling messages ---
       socket.onmessage = async (event) => {
         const data = JSON.parse(event.data);
+
         if (data.sdp) {
-          await peer.setRemoteDescription(new RTCSessionDescription(data.sdp));
-          if (data.sdp.type === "offer") {
-            const answer = await peer.createAnswer();
-            await peer.setLocalDescription(answer);
-            socket.send(JSON.stringify({ sdp: peer.localDescription }));
+          const desc = new RTCSessionDescription(data.sdp);
+
+          // ✅ Guards against duplicate/invalid SDP
+          if (desc.type === "answer" && peer.signalingState === "stable") {
+            console.warn("Skipping duplicate answer, already stable");
+            return;
+          }
+          if (desc.type === "offer" && peer.signalingState !== "stable") {
+            console.warn("Skipping unexpected offer, state:", peer.signalingState);
+            return;
+          }
+
+          try {
+            await peer.setRemoteDescription(desc);
+
+            if (desc.type === "offer") {
+              const answer = await peer.createAnswer();
+              await peer.setLocalDescription(answer);
+              socket.send(JSON.stringify({ sdp: peer.localDescription }));
+            }
+          } catch (err) {
+            console.error(
+              "❌ Failed to setRemoteDescription:",
+              err,
+              "state:",
+              peer.signalingState
+            );
           }
         } else if (data.ice) {
-          await peer.addIceCandidate(new RTCIceCandidate(data.ice));
+          try {
+            await peer.addIceCandidate(new RTCIceCandidate(data.ice));
+          } catch (err) {
+            console.warn("Error adding ICE candidate", err);
+          }
         } else if (data.type === "roomSize") {
           if (data.count >= 2) {
             stopTimer();
@@ -240,7 +257,6 @@ export default function App() {
       };
 
       socket.onclose = () => {
-        // mark as disconnected but keep pending messages for next connection
         setStatus("disconnected");
         setChatChannel(null);
       };
@@ -255,11 +271,8 @@ export default function App() {
   // ---- Send text ----
   const sendMessage = () => {
     if (!chatInput.trim()) return;
-
-    // show locally immediately
     setMessages((prev) => [...prev, { sender: "me", text: chatInput }]);
 
-    // if channel open -> send now, otherwise queue
     if (chatChannel && chatChannel.readyState === "open") {
       try {
         chatChannel.send(chatInput);
@@ -269,7 +282,6 @@ export default function App() {
     } else {
       setPendingMessages((prev) => [...prev, chatInput]);
     }
-
     setChatInput("");
   };
 
@@ -316,7 +328,6 @@ export default function App() {
       <div className="card-wrapper">
         <Header />
         <div className="call-card">
-          {/* Status indicator in top-right corner */}
           <div className="status-wrapper">
             <StatusIndicator status={status} />
           </div>
@@ -325,7 +336,6 @@ export default function App() {
           <RoomInput room={room} setRoom={setRoom} />
           {timeLeft !== null && <TimerProgress timeLeft={timeLeft} />}
 
-          {/* ChatBox as separate component */}
           <ChatBox
             status={status}
             messages={messages}
@@ -336,7 +346,6 @@ export default function App() {
             receivingFile={receivingFile}
           />
 
-          {/* Buttons */}
           <div className="button-group">
             <button
               onClick={startCall}
