@@ -10,6 +10,11 @@
   flex-wrap: wrap;
 }
 
+/* Mirror only the local preview */
+.video-element.local-mirror {
+  transform: scaleX(-1) !important;
+}
+
 /* -------- VIDEO CARD -------- */
 .video-card {
   flex: 1 1 45%;             

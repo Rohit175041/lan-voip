@@ -6,20 +6,13 @@
  * @param {RefObject<HTMLVideoElement>} remoteVideo
  * @param {Function} onConnected      - Called when remote media is attached.
  */
-export function createPeerConnection(
-  socket,
-  localVideo,
-  remoteVideo,
-  onConnected
-) {
-  const peer = new RTCPeerConnection({
-    iceServers: [
-      {
-        urls:
-          process.env.REACT_APP_ICE_SERVERS || "stun:stun.l.google.com:19302",
-      },
-    ],
-  });
+export function createPeerConnection(socket, localVideo, remoteVideo, onConnected) {
+  const iceServers =
+    process.env.REACT_APP_ICE_SERVERS
+      ? process.env.REACT_APP_ICE_SERVERS.split(",").map((url) => url.trim())
+      : ["stun:stun.l.google.com:19302"];
+
+  const peer = new RTCPeerConnection({ iceServers: [{ urls: iceServers }] });
 
   // ---- ICE candidates ----
   peer.onicecandidate = (e) => {
@@ -40,17 +33,12 @@ export function createPeerConnection(
     if (typeof onConnected === "function") onConnected();
   };
 
-  // ✅ Removed duplicate `peer.ondatachannel` handler.
-  // DataChannel will now only be handled in App.js
-
+  // ✅ DataChannel only handled in App.js
   return peer;
 }
 
 /**
  * Caller creates the DataChannel
- *
- * @param {RTCPeerConnection} peer
- * @param {Function} onMessage - Called when data is received (string | ArrayBuffer).
  */
 export function createChatChannel(peer, onMessage) {
   const dc = peer.createDataChannel("chat");
@@ -85,19 +73,14 @@ export function cleanupPeerConnection(pc, ws, localVideo, remoteVideo) {
   // Close PeerConnection
   if (pc) {
     try {
-      pc.getSenders().forEach((s) => s.track && s.track.stop());
-    } catch (err) {
-      console.warn("⚠️ Error stopping tracks:", err);
-    }
-    try {
       pc.close();
     } catch (err) {
       console.warn("⚠️ PeerConnection close error:", err);
     }
   }
 
-  // Close WebSocket
-  if (ws && ws.readyState === WebSocket.OPEN) {
+  // Always try to close WebSocket if it exists
+  if (ws) {
     try {
       ws.close();
     } catch (err) {

@@ -11,6 +11,7 @@
   box-sizing: border-box;
 }
 
+
 /* Wrapper for header + card */
 .card-wrapper {
   display: flex;

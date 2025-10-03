@@ -32,14 +32,27 @@ export default function App() {
   const [messages, setMessages] = useState([]);
   const [chatChannel, setChatChannel] = useState(null);
   const [chatInput, setChatInput] = useState("");
-  const [, setPendingMessages] = useState([]);
   const [receivingFile, setReceivingFile] = useState(null);
+
+  // Use refs for queues/flags
+  const pendingMessagesRef = useRef([]);
+  const setPendingMessages = (updater) => {
+    pendingMessagesRef.current =
+      typeof updater === "function"
+        ? updater(pendingMessagesRef.current)
+        : updater;
+  };
+
+  const isCallerRef = useRef(false);
+  const madeOfferRef = useRef(false);
+  const remoteDescSetRef = useRef(false);
+  const pendingRemoteICERef = useRef([]);
 
   // ---- Timer helpers ----
   const startTimer = (seconds) => {
     stopTimer();
     setTimeLeft(seconds);
-    setStatus("waiting");
+    if (status !== "connected") setStatus("waiting");
     timerRef.current = setInterval(() => {
       setTimeLeft((prev) => {
         if (prev <= 1) {
@@ -80,19 +93,22 @@ export default function App() {
   const disconnect = () => {
     stopTimer();
     setStatus("disconnected");
-
     try {
       if (chatChannel && chatChannel.readyState !== "closed") chatChannel.close();
-    } catch (_) { }
+    } catch (_) {}
 
     cleanupPeerConnection(pc, ws, localVideo, remoteVideo);
 
     setPc(null);
     setWs(null);
     setChatChannel(null);
-    // keep pendingMessages (setter remains) so they can flush after reconnect
     setMessages([]);
     setReceivingFile(null);
+
+    isCallerRef.current = false;
+    madeOfferRef.current = false;
+    remoteDescSetRef.current = false;
+    pendingRemoteICERef.current = [];
   };
 
   // ---- Incoming data (chat or file) ----
@@ -139,13 +155,12 @@ export default function App() {
           return;
         }
       } catch {
-        // not JSON — treat as plain text message
         setMessages((prev) => [...prev, { sender: "remote", text: data }]);
       }
     }
   };
 
-  // ---- Setup DataChannel (inbound or outbound) ----
+  // ---- Setup DataChannel ----
   const setupDataChannel = (dc, label) => {
     if (!dc) return;
     dc.binaryType = "arraybuffer";
@@ -178,106 +193,170 @@ export default function App() {
       return;
     }
 
-    const socket = createWebSocket(room, disconnect);
-    setWs(socket);
+    const socket = createWebSocket(
+      room,
+      disconnect, // onClose handler from your signaling util
+      async () => {
+        setStatus("waiting");
 
-    socket.onopen = async () => {
-      setStatus("waiting");
+        const peer = createPeerConnection(
+          socket,
+          localVideo,
+          remoteVideo,
+          () => {
+            console.log("🎥 Remote track received");
+            stopTimer();
+            setStatus("connected");
+          }
+        );
+        setPc(peer);
 
-      const peer = createPeerConnection(
-        socket,
-        localVideo,
-        remoteVideo,
-        () => {
-          console.log("🎥 Remote track received");
-          stopTimer();
-          setStatus("connected");
-        }
-      );
-      setPc(peer);
+        // Accept remote-created channels
+        peer.ondatachannel = (event) => setupDataChannel(event.channel, "inbound");
 
-      // Inbound DC
-      peer.ondatachannel = (event) => setupDataChannel(event.channel, "inbound");
-
-      // Outbound DC
-      const dc = createChatChannel(peer, handleIncomingData);
-      setupDataChannel(dc, "outbound");
-
-      // Get local media
-      try {
-        const stream = await navigator.mediaDevices.getUserMedia({
-          video: true,
-          audio: true,
-        });
-        if (localVideo.current) localVideo.current.srcObject = stream;
-        stream.getTracks().forEach((t) => peer.addTrack(t, stream));
-      } catch (err) {
-        alert("Camera/Microphone permission denied");
-        socket.close();
-        return;
-      }
-
-      // Handle signaling
-      socket.onmessage = async (event) => {
-        let data = null;
+        // Get local media
         try {
-          data = JSON.parse(event.data);
+          const stream = await navigator.mediaDevices.getUserMedia({
+            video: true,
+            audio: true,
+          });
+          if (localVideo.current) localVideo.current.srcObject = stream;
+          stream.getTracks().forEach((t) => peer.addTrack(t, stream));
         } catch (err) {
-          console.warn("Bad signaling payload:", err);
+          alert("Camera/Microphone permission denied");
+          socket.close();
           return;
         }
 
-        console.log("📩 Signaling:", data);
+        // ---- Optimistic caller path: create DC + Offer immediately
+        // (works even if your server doesn't send `roomSize`)
+        if (!madeOfferRef.current) {
+          try {
+            const dc = createChatChannel(peer, handleIncomingData);
+            setupDataChannel(dc, "outbound");
+          } catch (e) {
+            console.warn("Could not create outbound DataChannel (will rely on inbound).", e);
+          }
 
-        if (data.sdp) {
           try {
-            await peer.setRemoteDescription(new RTCSessionDescription(data.sdp));
-            if (data.sdp.type === "offer") {
-              const answer = await peer.createAnswer();
-              await peer.setLocalDescription(answer);
-              socket.send(JSON.stringify({ sdp: peer.localDescription }));
-              stopTimer();
-              setStatus("connected");
-            }
+            const offer = await peer.createOffer();
+            await peer.setLocalDescription(offer);
+            socket.send(JSON.stringify({ sdp: peer.localDescription }));
+            madeOfferRef.current = true;
+            isCallerRef.current = true;
           } catch (err) {
-            console.error("Error applying SDP:", err);
+            console.error("❌ Failed to create/send initial offer:", err);
           }
-        } else if (data.ice) {
-          try {
-            await peer.addIceCandidate(new RTCIceCandidate(data.ice));
-          } catch (err) {
-            console.warn("⚠️ addIceCandidate failed:", err);
-          }
-        } else if (data.type === "roomSize") {
-          if (data.count >= 2) {
-            stopTimer();
-            setStatus("connected");
-          } else {
-            startTimer(120);
-            setStatus("waiting");
-          }
-        } else if (data.type === "timeout") {
-          alert(data.message || "Call ended due to inactivity.");
-          disconnect();
         }
-      };
 
-      socket.onclose = () => {
-        console.warn("⚠️ WebSocket closed");
-        setStatus("disconnected");
-        setChatChannel(null);
-      };
+        // ---- Signaling
+        socket.onmessage = async (event) => {
+          let data = null;
+          try {
+            data = JSON.parse(event.data);
+          } catch (err) {
+            console.warn("Bad signaling payload:", err);
+            return;
+          }
 
-      // Caller: send offer
-      try {
-        const offer = await peer.createOffer();
-        await peer.setLocalDescription(offer);
-        socket.send(JSON.stringify({ sdp: peer.localDescription }));
+          if (data.sdp) {
+            const desc = new RTCSessionDescription(data.sdp);
+            try {
+              if (desc.type === "offer") {
+                // Handle glare: if not stable, rollback our local offer first
+                if (peer.signalingState !== "stable") {
+                  try {
+                    await peer.setLocalDescription({ type: "rollback" });
+                  } catch (e) {
+                    console.warn("Rollback failed (continuing):", e);
+                  }
+                }
+                await peer.setRemoteDescription(desc);
+                remoteDescSetRef.current = true;
+
+                // Apply queued ICE now that remote desc is set
+                const queued = pendingRemoteICERef.current;
+                pendingRemoteICERef.current = [];
+                for (const ice of queued) {
+                  try {
+                    await peer.addIceCandidate(new RTCIceCandidate(ice));
+                  } catch (e) {
+                    console.warn("⚠️ queued addIceCandidate failed:", e);
+                  }
+                }
+
+                const answer = await peer.createAnswer();
+                await peer.setLocalDescription(answer);
+                socket.send(JSON.stringify({ sdp: peer.localDescription }));
+                stopTimer();
+                setStatus("connected");
+              } else if (desc.type === "answer") {
+                await peer.setRemoteDescription(desc);
+                remoteDescSetRef.current = true;
+
+                const queued = pendingRemoteICERef.current;
+                pendingRemoteICERef.current = [];
+                for (const ice of queued) {
+                  try {
+                    await peer.addIceCandidate(new RTCIceCandidate(ice));
+                  } catch (e) {
+                    console.warn("⚠️ queued addIceCandidate failed:", e);
+                  }
+                }
+                stopTimer();
+                setStatus("connected");
+              }
+            } catch (err) {
+              console.error("Error applying SDP:", err);
+            }
+          } else if (data.ice) {
+            if (!remoteDescSetRef.current) {
+              pendingRemoteICERef.current.push(data.ice);
+            } else {
+              try {
+                await peer.addIceCandidate(new RTCIceCandidate(data.ice));
+              } catch (err) {
+                console.warn("⚠️ addIceCandidate failed:", err);
+              }
+            }
+          } else if (data.type === "roomSize") {
+            // Optional: still support your server's roomSize hint
+            if (data.count >= 2 && !madeOfferRef.current) {
+              try {
+                const dc = createChatChannel(peer, handleIncomingData);
+                setupDataChannel(dc, "outbound");
+              } catch (_) {}
+              try {
+                const offer = await peer.createOffer();
+                await peer.setLocalDescription(offer);
+                socket.send(JSON.stringify({ sdp: peer.localDescription }));
+                madeOfferRef.current = true;
+                isCallerRef.current = true;
+                stopTimer();
+                setStatus("connected");
+              } catch (err) {
+                console.error("❌ Failed to create/send offer (roomSize path):", err);
+              }
+            } else if (data.count < 2) {
+              startTimer(120);
+            }
+          } else if (data.type === "timeout") {
+            alert(data.message || "Call ended due to inactivity.");
+            disconnect();
+          }
+        };
+
+        socket.onclose = () => {
+          console.warn("⚠️ WebSocket closed");
+          setStatus("disconnected");
+          setChatChannel(null);
+        };
+
         startTimer(120);
-      } catch (err) {
-        console.error("❌ Failed to create/send offer:", err);
       }
-    };
+    );
+
+    setWs(socket);
   };
 
   // ---- Send text ----
@@ -335,17 +414,16 @@ export default function App() {
     ]);
   };
 
-  // cleanup on unmount
   useEffect(() => {
     return () => {
       try {
         disconnect();
-      } catch (_) { }
+      } catch (_) {}
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // ---- UI (unchanged) ----
+  // ---- UI ----
   return (
     <div className="app-container">
       <div className="card-wrapper">
@@ -356,9 +434,7 @@ export default function App() {
           </div>
 
           <VideoGrid localRef={localVideo} remoteRef={remoteVideo} />
-          {status !== "connected" && (
-            <RoomInput room={room} setRoom={setRoom} />
-          )}
+          {status !== "connected" && <RoomInput room={room} setRoom={setRoom} />}
           {timeLeft !== null && <TimerProgress timeLeft={timeLeft} />}
 
           <ChatBox

@@ -16,11 +16,15 @@ export function createWebSocket(room, onClose, onOpen) {
     if (typeof onOpen === "function") onOpen();
   };
 
-  socket.onerror = (err) => console.error("❌ WebSocket error:", err);
+  socket.onerror = (err) => {
+    console.error("❌ WebSocket error:", err);
+    // Optional: force cleanup if error occurs
+    if (typeof onClose === "function") onClose(err);
+  };
 
-  socket.onclose = () => {
-    console.warn("⚠️ WebSocket closed");
-    if (typeof onClose === "function") onClose();
+  socket.onclose = (event) => {
+    console.warn(`⚠️ WebSocket closed (code=${event.code}, reason=${event.reason || "no reason"})`);
+    if (typeof onClose === "function") onClose(event);
   };
 
   return socket;
