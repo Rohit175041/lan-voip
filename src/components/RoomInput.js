@@ -34,7 +34,7 @@ export default function RoomInput({ room, setRoom }) {
           type="text"
           value={room}
           onChange={handleChange}
-          placeholder="Enter Room ID"
+          placeholder="Enter User ID"
           maxLength={10}
           className="room-input"
         />
