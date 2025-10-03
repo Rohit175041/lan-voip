@@ -38,7 +38,7 @@
   border-radius: 20px;
   padding: 1.2rem;
   width: 100%;
-  max-width: 600px;
+  max-width: 650px; /* ✅ slightly wider for better fit */
   text-align: center;
   box-shadow: 0 6px 24px rgba(0, 0, 0, 0.35);
   position: relative;
@@ -48,7 +48,7 @@
 /* 🎥 Video Grid */
 .video-grid {
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;       /* ✅ always side-by-side */
   justify-content: center;
   gap: 1rem;
   margin: 1rem 0;
@@ -56,14 +56,14 @@
 }
 
 .video-card {
+  position: relative;
   flex: 1 1 50%;
-  max-width: 300px;     /* ✅ balanced size */
-  min-width: 240px;
+  max-width: 48%;          /* ✅ better balance */
   aspect-ratio: 16 / 9;
   background: rgba(0, 0, 0, 0.7);
   border-radius: 12px;
   overflow: hidden;
-  position: relative;
+  box-shadow: 0 4px 10px rgba(0,0,0,0.4);
 }
 
 .video-element {
@@ -84,35 +84,6 @@
   color: #fff;
 }
 
-/* 🟢 Status Indicator */
-.status-wrapper {
-  display: flex;
-  justify-content: center;
-  width: 100%;
-  max-width: 400px;    /* ✅ reduced to match inputs/buttons */
-  margin: 0 auto;
-}
-
-.status-pill {
-  flex: 1;
-  text-align: center;
-  padding: 0.6rem 1rem;
-  border-radius: 25px;
-  font-size: 0.85rem;
-  font-weight: 500;
-  color: #fff;
-  background: rgba(255, 255, 255, 0.12);
-  backdrop-filter: blur(6px);
-}
-
-.status-pill.connected {
-  background: rgba(39, 174, 96, 0.8);
-}
-
-.status-pill.disconnected {
-  background: rgba(231, 76, 60, 0.8);
-}
-
 /* ⌨️ Room Input */
 .room-container {
   margin: 1rem 0;
@@ -123,10 +94,10 @@
 
 .room-input-wrapper {
   width: 100%;
-  max-width: 400px;   /* ✅ narrower for cleaner desktop look */
+  max-width: 420px; /* ✅ slightly wider */
   background: rgba(255, 255, 255, 0.08);
   border-radius: 25px;
-  padding: 0.7rem 1.2rem;
+  padding: 0.6rem 1.2rem;
   display: flex;
   justify-content: center;
   align-items: center;
@@ -160,9 +131,9 @@
   display: flex;
   justify-content: center;
   gap: 1rem;
-  flex-wrap: wrap;
+  flex-wrap: nowrap; /* ✅ always in one row */
   width: 100%;
-  max-width: 400px;   /* ✅ match input box */
+  max-width: 420px;
   margin: 0 auto;
 }
 
@@ -214,21 +185,31 @@
   .call-card {
     padding: 1rem;
   }
-  .video-card,
-  .room-input-wrapper,
-  .button-group,
-  .status-wrapper {
-    flex: 1 1 100%;
-    width: 100% !important;
-    max-width: 100% !important;
-    min-width: auto !important;
+
+  /* ✅ Keep videos horizontal */
+  .video-grid {
+    flex-direction: row !important;
+    flex-wrap: nowrap !important;
+    gap: 0.5rem;
   }
+  .video-card {
+    max-width: 50%;
+    flex: 1;
+  }
+
+  /* ✅ Keep buttons horizontal */
   .button-group {
-    flex-direction: column;
-    gap: 0.6rem;
+    flex-direction: row !important;
+    justify-content: space-between;
+    gap: 0.5rem;
   }
   .btn {
-    width: 100%;
-    border-radius: 30px;
+    flex: 1;
+    width: auto !important;
+    border-radius: 25px;
+  }
+
+  .room-input-wrapper {
+    max-width: 100%;
   }
 }
