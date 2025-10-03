@@ -1,10 +1,13 @@
+/* =======================
+   ROOM INPUT CONTAINER
+   ======================= */
 .room-container {
   display: flex;
   flex-direction: column;
   align-items: center;
   margin-top: 1rem;
   width: 100%;
-  padding: 0 1rem; /* ✅ prevent edge clipping */
+  padding: 0 1rem;
   box-sizing: border-box;
 }
 
@@ -12,27 +15,30 @@
 .room-input-wrapper {
   display: flex;
   align-items: center;
-  background: #2a3942;     /* WhatsApp dark input */
-  border-radius: 40px;     /* ✅ match Start/Disconnect buttons */
-  padding: 0.4rem 1rem;    /* 🔽 slightly reduced for better button alignment */
+  background: rgba(255, 255, 255, 0.08); /* ✅ glass effect */
+  border-radius: 40px;
+  padding: 0.5rem 1rem;
   width: 100%;
-  max-width: 400px;        /* ✅ same width as buttons */
-  transition: box-shadow 0.2s ease, background 0.2s ease;
+  max-width: 420px;
+  transition: box-shadow 0.3s ease, background 0.3s ease;
   box-sizing: border-box;
-  margin: 0 auto;          /* ✅ keep centered */
+  margin: 0 auto;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  backdrop-filter: blur(8px);
 }
 
 /* On focus */
 .room-input-wrapper:focus-within {
-  background: #314148;
-  box-shadow: 0 0 0 2px #00a88455; /* subtle green glow */
+  background: rgba(0, 168, 132, 0.15);
+  box-shadow: 0 0 0 2px #00e67655, 0 0 12px rgba(0, 230, 118, 0.35);
+  border: 1px solid rgba(0, 230, 118, 0.4);
 }
 
 /* Text box itself */
 .room-input {
   flex: 1;
-  padding: 0.3rem 0.6rem;  /* 🔽 smaller to reduce height */
-  font-size: 0.9rem;       /* ✅ balanced with buttons */
+  padding: 0.4rem 0.6rem;
+  font-size: 0.95rem;
   border: none;
   background: transparent;
   color: #fff;
@@ -41,35 +47,36 @@
 }
 
 .room-input::placeholder {
-  color: rgba(255, 255, 255, 0.5);
+  color: rgba(255, 255, 255, 0.55);
 }
 
 /* Red border if error */
 .room-input-error {
   box-shadow: 0 0 0 2px #ff4d4d;
   border-radius: 40px;
+  border: 1px solid rgba(255, 77, 77, 0.6);
 }
 
 /* Error message */
 .room-error {
   color: #ff4d4d;
   font-size: 0.8rem;
-  margin-top: 0.4rem;   /* ✅ spacing below input */
+  margin-top: 0.4rem;
   text-align: center;
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 6px;             /* space between ⚠ and text */
+  gap: 6px;
 }
 
 .room-error::before {
-  content: "⚠";        /* ✅ adds warning icon automatically */
+  content: "⚠";
   font-size: 0.9rem;
 }
 
-/* Optional copy button (if re-enabled) */
+/* Optional copy button */
 .copy-btn {
-  background: #00a884;
+  background: linear-gradient(145deg, #00c853, #00e676);
   border: none;
   border-radius: 50%;
   color: white;
@@ -81,16 +88,18 @@
   justify-content: center;
   align-items: center;
   font-size: 1rem;
-  transition: background 0.2s ease;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+  box-shadow: 0 4px 10px rgba(0, 230, 118, 0.3);
 }
 .copy-btn:hover {
-  background: #1bb394;
+  transform: translateY(-2px);
+  box-shadow: 0 6px 14px rgba(0, 230, 118, 0.45);
 }
 
 /* 📱 Responsive tweaks */
 @media (max-width: 600px) {
   .room-input-wrapper {
-    max-width: 100%;   /* ✅ full width on small screens */
+    max-width: 100%;
     padding: 0.5rem 0.8rem;
     border-radius: 30px;
   }
