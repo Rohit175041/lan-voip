@@ -1,6 +1,5 @@
 // App.js
-import React, { useRef, useState } from "react";
-import { FaPhone, FaPhoneSlash } from "react-icons/fa";
+import React, { useRef, useState, useEffect } from "react";
 import "./App.css";
 
 import Header from "./components/Header";
@@ -9,6 +8,7 @@ import VideoGrid from "./components/VideoGrid";
 import RoomInput from "./components/RoomInput";
 import TimerProgress from "./components/TimerProgress";
 import ChatBox from "./components/ChatBox";
+import CallButtons from "./components/CallButtons";
 
 import {
   createPeerConnection,
@@ -90,7 +90,7 @@ export default function App() {
     setPc(null);
     setWs(null);
     setChatChannel(null);
-    // ✅ Keep pendingMessages so they flush after reconnect
+    // keep pendingMessages (setter remains) so they can flush after reconnect
     setMessages([]);
     setReceivingFile(null);
   };
@@ -139,6 +139,7 @@ export default function App() {
           return;
         }
       } catch {
+        // not JSON — treat as plain text message
         setMessages((prev) => [...prev, { sender: "remote", text: data }]);
       }
     }
@@ -146,6 +147,7 @@ export default function App() {
 
   // ---- Setup DataChannel (inbound or outbound) ----
   const setupDataChannel = (dc, label) => {
+    if (!dc) return;
     dc.binaryType = "arraybuffer";
     dc.onmessage = (e) => handleIncomingData(e.data);
     dc.onopen = () => {
@@ -217,17 +219,28 @@ export default function App() {
 
       // Handle signaling
       socket.onmessage = async (event) => {
-        const data = JSON.parse(event.data);
+        let data = null;
+        try {
+          data = JSON.parse(event.data);
+        } catch (err) {
+          console.warn("Bad signaling payload:", err);
+          return;
+        }
+
         console.log("📩 Signaling:", data);
 
         if (data.sdp) {
-          await peer.setRemoteDescription(new RTCSessionDescription(data.sdp));
-          if (data.sdp.type === "offer") {
-            const answer = await peer.createAnswer();
-            await peer.setLocalDescription(answer);
-            socket.send(JSON.stringify({ sdp: peer.localDescription }));
-            stopTimer();
-            setStatus("connected");
+          try {
+            await peer.setRemoteDescription(new RTCSessionDescription(data.sdp));
+            if (data.sdp.type === "offer") {
+              const answer = await peer.createAnswer();
+              await peer.setLocalDescription(answer);
+              socket.send(JSON.stringify({ sdp: peer.localDescription }));
+              stopTimer();
+              setStatus("connected");
+            }
+          } catch (err) {
+            console.error("Error applying SDP:", err);
           }
         } else if (data.ice) {
           try {
@@ -322,6 +335,16 @@ export default function App() {
     ]);
   };
 
+  // cleanup on unmount
+  useEffect(() => {
+    return () => {
+      try {
+        disconnect();
+      } catch (_) {}
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // ---- UI (unchanged) ----
   return (
     <div className="app-container">
@@ -346,18 +369,11 @@ export default function App() {
             receivingFile={receivingFile}
           />
 
-          <div className="button-group">
-            <button
-              onClick={startCall}
-              disabled={!!pc || !!ws}
-              className={`btn ${pc || ws ? "btn-disabled" : "btn-green"}`}
-            >
-              <FaPhone /> Start Call
-            </button>
-            <button onClick={disconnect} className="btn btn-red">
-              <FaPhoneSlash /> Disconnect
-            </button>
-          </div>
+          <CallButtons
+            onStart={startCall}
+            onDisconnect={disconnect}
+            disabled={!!pc || !!ws}
+          />
         </div>
       </div>
     </div>

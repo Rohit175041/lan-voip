@@ -1,0 +1,85 @@
+/* =======================
+   CALL BUTTONS
+   ======================= */
+.button-group {
+  margin-top: 1rem;
+  display: flex;
+  justify-content: center;
+  gap: 1rem;
+  flex-wrap: nowrap;
+  width: 100%;
+  max-width: 420px;
+  margin: 0 auto;
+}
+
+.btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 0.6rem 1.2rem;
+  font-size: 0.95rem;
+  font-weight: 600;
+  border: none;
+  border-radius: 30px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  flex: 1;
+  min-width: 0;
+}
+
+.btn svg {
+  font-size: 1rem;
+}
+
+/* Green button with modern glow */
+.btn-green {
+  background: linear-gradient(145deg, #00c853, #00e676);
+  color: white;
+  box-shadow: 0 4px 12px rgba(0, 230, 118, 0.3);
+}
+.btn-green:hover {
+  background: linear-gradient(145deg, #00b248, #00c853);
+}
+
+/* Red button with modern glow */
+.btn-red {
+  background: linear-gradient(145deg, #d32f2f, #f44336);
+  color: white;
+  box-shadow: 0 4px 12px rgba(244, 67, 54, 0.3);
+}
+.btn-red:hover {
+  background: linear-gradient(145deg, #b71c1c, #d32f2f);
+}
+
+.btn-disabled {
+  background: #555;
+  cursor: not-allowed;
+}
+
+.btn:hover {
+  transform: translateY(-2px);
+  opacity: 0.95;
+}
+
+/* 📱 Responsive Tweaks */
+@media (max-width: 768px) {
+  .button-group {
+    flex-direction: row;
+    justify-content: space-between;
+    gap: 0.5rem;
+  }
+
+  .btn {
+    flex: 1;
+    width: auto;
+    border-radius: 20px;
+  }
+}
+
+@media (max-width: 480px) {
+  .btn {
+    font-size: 0.85rem;
+    padding: 0.6rem 0.8rem;
+  }
+}
