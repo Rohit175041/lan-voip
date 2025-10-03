@@ -105,19 +105,6 @@ A **React-based real-time video calling app** that enables two users to connect 
 * 🎤 Mute/unmute & camera toggle
 * 🌐 Deploy signaling server on cloud (Heroku/Render/Vercel)
 
----
-
-## 🤝 Contributing
-
-Contributions are welcome! Fork the repo, create a feature branch, and submit a PR.
-
----
-
-## 📜 License
-
-This project is licensed under the **MIT License**.
-
----
 
 ### 👨‍💻 Author
 
