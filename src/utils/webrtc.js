@@ -8,42 +8,53 @@
  */
 export function createPeerConnection(socket, localVideo, remoteVideo, onConnected) {
   // ---- Build ICE server list ----
-  const iceUrls =
+  const stunUrls =
     process.env.REACT_APP_ICE_SERVERS
       ? process.env.REACT_APP_ICE_SERVERS.split(",").map((u) => u.trim())
       : ["stun:stun.l.google.com:19302"];
 
-  const configuration = {
-    iceServers: [
-      { urls: iceUrls },
-      // 👉 ADD YOUR TURN SERVER HERE for production:
-      // { urls: "turn:turn.yourdomain.com:3478", username: "user", credential: "pass" },
-    ],
-  };
+  // Optional TURN credentials from env
+  const turnUrl = process.env.REACT_APP_TURN_URL;
+  const turnUser = process.env.REACT_APP_TURN_USERNAME;
+  const turnPass = process.env.REACT_APP_TURN_PASSWORD;
+
+  const iceServers = [{ urls: stunUrls }];
+  if (turnUrl) {
+    iceServers.push({
+      urls: turnUrl,
+      username: turnUser || undefined,
+      credential: turnPass || undefined,
+    });
+  }
+
+  const configuration = { iceServers };
 
   const pc = new RTCPeerConnection(configuration);
+
+  console.log("📡 RTCPeerConnection created with ICE servers:", iceServers);
 
   // ---- ICE candidates ----
   pc.onicecandidate = (e) => {
     if (e.candidate && socket?.readyState === WebSocket.OPEN) {
       try {
         socket.send(JSON.stringify({ ice: e.candidate }));
+        console.log("🧊 Sent ICE candidate:", e.candidate.candidate);
       } catch (err) {
         console.error("❌ Failed to send ICE candidate:", err);
       }
     }
   };
 
-  // ---- ICE connection state logs ----
-  pc.oniceconnectionstatechange = () => {
+  // ---- ICE / Peer state logs ----
+  pc.oniceconnectionstatechange = () =>
     console.log("🌐 ICE state:", pc.iceConnectionState);
-    if (pc.iceConnectionState === "failed" || pc.iceConnectionState === "disconnected") {
-      console.warn("⚠️ ICE failed or disconnected — likely need TURN");
-    }
-  };
+
+  pc.onconnectionstatechange = () =>
+    console.log("🔌 Peer state:", pc.connectionState);
 
   // ---- Remote track ----
   pc.ontrack = (e) => {
+    console.log("🎥 Remote track received");
     if (remoteVideo?.current && e.streams[0]) {
       remoteVideo.current.srcObject = e.streams[0];
     }
@@ -72,13 +83,29 @@ export function createChatChannel(pc, onMessage) {
  * Cleanup PeerConnection and WebSocket safely.
  */
 export function cleanupPeerConnection(pc, ws, localVideo, remoteVideo) {
+  // stop local media
   if (localVideo?.current?.srcObject) {
     localVideo.current.srcObject.getTracks().forEach((t) => t.stop());
     localVideo.current.srcObject = null;
   }
+
+  // clear remote
   if (remoteVideo?.current) {
     remoteVideo.current.srcObject = null;
   }
-  try { pc?.close(); } catch (err) { console.warn("⚠️ Peer close error:", err); }
-  try { ws?.close(); } catch (err) { console.warn("⚠️ WS close error:", err); }
+
+  // close peer connection
+  try {
+    pc?.getSenders()?.forEach((s) => s.track?.stop());
+    pc?.close();
+  } catch (err) {
+    console.warn("⚠️ Peer close error:", err);
+  }
+
+  // close websocket
+  try {
+    ws?.close();
+  } catch (err) {
+    console.warn("⚠️ WS close error:", err);
+  }
 }
