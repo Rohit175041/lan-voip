@@ -1,6 +1,7 @@
 // src/App.js
 import React, { useRef, useState } from "react";
 import "./App.css";
+
 import Header from "./components/Header";
 import StatusIndicator from "./components/StatusIndicator";
 import VideoGrid from "./components/VideoGrid";
@@ -8,12 +9,15 @@ import RoomInput from "./components/RoomInput";
 import TimerProgress from "./components/TimerProgress";
 import ChatBox from "./components/ChatBox";
 import CallButtons from "./components/CallButtons";
+
 import useCallManager from "./hooks/useCallManager";
 
 export default function App() {
-  const localVideo = useRef(null);
-  const remoteVideo = useRef(null);
+  const localRef = useRef(null);
+  const remoteRef = useRef(null);
+
   const [room, setRoom] = useState("");
+  const [chatInput, setChatInput] = useState(""); // ✅ state for chat input
 
   const {
     status,
@@ -24,7 +28,14 @@ export default function App() {
     disconnect,
     sendMessage,
     sendFile,
-  } = useCallManager(localVideo, remoteVideo);
+  } = useCallManager(localRef, remoteRef);
+
+  const handleSendMessage = () => {
+    if (chatInput.trim()) {
+      sendMessage(chatInput);
+      setChatInput(""); // clear after sending
+    }
+  };
 
   return (
     <div className="app-container">
@@ -32,21 +43,39 @@ export default function App() {
         <Header />
         <div className="call-card">
           <StatusIndicator status={status} />
-          <VideoGrid localRef={localVideo} remoteRef={remoteVideo} />
-          {status !== "connected" && <RoomInput room={room} setRoom={setRoom} />}
+
+          {/* ---- Video section ---- */}
+          <VideoGrid localRef={localRef} remoteRef={remoteRef} />
+
+          {/* ---- Room input ---- */}
+          {status !== "connected" && (
+            <div className="room-container">
+              <RoomInput room={room} setRoom={setRoom} />
+            </div>
+          )}
+
+          {/* ---- Timer ---- */}
           {timeLeft !== null && <TimerProgress timeLeft={timeLeft} />}
+
+          {/* ---- Chat ---- */}
           <ChatBox
             status={status}
             messages={messages}
-            sendMessage={sendMessage}
+            chatInput={chatInput}
+            setChatInput={setChatInput}
+            sendMessage={handleSendMessage}
             sendFile={sendFile}
             receivingFile={receivingFile}
           />
-          <CallButtons
-            onStart={() => startCall(room)}
-            onDisconnect={disconnect}
-            disabled={status !== "disconnected"}
-          />
+
+          {/* ---- Call Buttons ---- */}
+          <div className="button-group">
+            <CallButtons
+              onStart={() => startCall(room)}
+              onDisconnect={disconnect}
+              disabled={status !== "disconnected"}
+            />
+          </div>
         </div>
       </div>
     </div>

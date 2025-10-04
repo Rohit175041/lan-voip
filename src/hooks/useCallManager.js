@@ -7,8 +7,13 @@ import {
 } from "../utils/webrtc";
 import { createWebSocket } from "../utils/signaling";
 
-export default function useCallManager(localVideo, remoteVideo) {
-  const [status, setStatus] = useState("disconnected");
+/**
+ * Custom hook to handle WebRTC call logic
+ * @param {React.RefObject<HTMLVideoElement>} local - local video ref
+ * @param {React.RefObject<HTMLVideoElement>} remote - remote video ref
+ */
+export default function useCallManager(local, remote) {
+  const [status, setStatus] = useState("disconnected"); // disconnected | waiting | connected | reconnecting
   const [messages, setMessages] = useState([]);
   const [chatChannel, setChatChannel] = useState(null);
   const [receivingFile, setReceivingFile] = useState(null);
@@ -19,27 +24,27 @@ export default function useCallManager(localVideo, remoteVideo) {
   const timerRef = useRef(null);
   const pendingMessages = useRef([]);
 
-  // ---- STOP TIMER ----
+  /** ---- CLEANUP / DISCONNECT ---- */
   const stopTimer = useCallback(() => {
     if (timerRef.current) clearInterval(timerRef.current);
     timerRef.current = null;
     setTimeLeft(null);
   }, []);
 
-  // ---- DISCONNECT ----
   const disconnect = useCallback(() => {
+    console.log("🔌 Disconnecting call...");
     stopTimer();
     setStatus("disconnected");
-    cleanupPeerConnection(pc.current, ws.current, localVideo, remoteVideo);
+    cleanupPeerConnection(pc.current, ws.current, local, remote);
     pc.current = null;
     ws.current = null;
     setChatChannel(null);
     setMessages([]);
     setReceivingFile(null);
     pendingMessages.current = [];
-  }, [stopTimer, localVideo, remoteVideo]);
+  }, [stopTimer, local, remote]);
 
-  // ---- START TIMER ----
+  /** ---- TIMER ---- */
   const startTimer = useCallback(
     (seconds) => {
       if (timerRef.current) clearInterval(timerRef.current);
@@ -49,6 +54,7 @@ export default function useCallManager(localVideo, remoteVideo) {
         setTimeLeft((prev) => {
           if (prev <= 1) {
             clearInterval(timerRef.current);
+            timerRef.current = null;
             setStatus("disconnected");
             alert("No one joined within 2 minutes. Call ended.");
             disconnect();
@@ -58,10 +64,10 @@ export default function useCallManager(localVideo, remoteVideo) {
         });
       }, 1000);
     },
-    [disconnect] // ✅ FIX: include disconnect
+    [disconnect]
   );
 
-  // ---- HANDLE INCOMING DATA ----
+  /** ---- INCOMING DATA ---- */
   const handleIncomingData = useCallback((data) => {
     if (data instanceof ArrayBuffer) {
       setReceivingFile((prev) =>
@@ -69,6 +75,7 @@ export default function useCallManager(localVideo, remoteVideo) {
       );
       return;
     }
+
     if (typeof data === "string") {
       try {
         const obj = JSON.parse(data);
@@ -100,7 +107,7 @@ export default function useCallManager(localVideo, remoteVideo) {
     }
   }, []);
 
-  // ---- SEND MESSAGE ----
+  /** ---- SEND MESSAGE ---- */
   const sendMessage = useCallback(
     (msg) => {
       if (!msg.trim()) return;
@@ -114,7 +121,7 @@ export default function useCallManager(localVideo, remoteVideo) {
     [chatChannel]
   );
 
-  // ---- SEND FILE ----
+  /** ---- SEND FILE ---- */
   const sendFile = useCallback(
     (file) => {
       if (!file) return;
@@ -155,7 +162,7 @@ export default function useCallManager(localVideo, remoteVideo) {
     [chatChannel]
   );
 
-  // ---- START CALL ----
+  /** ---- START CALL ---- */
   const startCall = useCallback(
     async (room) => {
       if (!room.trim()) {
@@ -172,19 +179,25 @@ export default function useCallManager(localVideo, remoteVideo) {
 
       socket.onopen = async () => {
         setStatus("waiting");
-        const peer = createPeerConnection(
-          socket,
-          localVideo,
-          remoteVideo,
-          () => {
-            stopTimer();
-            setStatus("connected");
-          },
-          handleIncomingData
-        );
+        const peer = createPeerConnection(socket, local, remote, () => {
+          stopTimer();
+          setStatus("connected");
+        });
         pc.current = peer;
 
-        // ICE reconnect
+        peer.ondatachannel = (e) => {
+          console.log("📡 Incoming DataChannel:", e.channel.label);
+          const dc = e.channel;
+          dc.binaryType = "arraybuffer";
+          dc.onmessage = (msg) => handleIncomingData(msg.data);
+          dc.onopen = () => {
+            setChatChannel(dc);
+            pendingMessages.current.forEach((m) => dc.send(m));
+            pendingMessages.current = [];
+          };
+        };
+
+        // ICE reconnect handling
         peer.oniceconnectionstatechange = () => {
           if (peer.iceConnectionState === "disconnected") {
             setStatus("reconnecting");
@@ -195,6 +208,7 @@ export default function useCallManager(localVideo, remoteVideo) {
           }
         };
 
+        // Caller creates DataChannel
         const dc = createChatChannel(peer, handleIncomingData);
         dc.onopen = () => {
           setChatChannel(dc);
@@ -207,7 +221,7 @@ export default function useCallManager(localVideo, remoteVideo) {
             video: true,
             audio: true,
           });
-          if (localVideo.current) localVideo.current.srcObject = stream;
+          if (local.current) local.current.srcObject = stream;
           stream.getTracks().forEach((t) => peer.addTrack(t, stream));
         } catch (err) {
           alert("Camera/Mic denied");
@@ -235,9 +249,10 @@ export default function useCallManager(localVideo, remoteVideo) {
         startTimer(120);
       };
     },
-    [disconnect, handleIncomingData, localVideo, remoteVideo, startTimer, stopTimer]
+    [disconnect, handleIncomingData, local, remote, startTimer, stopTimer]
   );
 
+  /** ---- CLEANUP ON UNMOUNT ---- */
   useEffect(() => {
     return () => {
       disconnect();
