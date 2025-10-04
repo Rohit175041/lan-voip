@@ -1,5 +1,5 @@
 // src/hooks/useCallManager.js
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useRef, useState, useEffect, useCallback } from "react";
 import {
   createPeerConnection,
   cleanupPeerConnection,
@@ -8,76 +8,64 @@ import {
 import { createWebSocket } from "../utils/signaling";
 
 export default function useCallManager(localVideo, remoteVideo) {
-  const [pc, setPc] = useState(null);
-  const [ws, setWs] = useState(null);
-  const [room, setRoom] = useState("");
-  const [timeLeft, setTimeLeft] = useState(null);
   const [status, setStatus] = useState("disconnected");
-
-  const timerRef = useRef(null);
-
-  // Chat state
   const [messages, setMessages] = useState([]);
   const [chatChannel, setChatChannel] = useState(null);
-  const [chatInput, setChatInput] = useState("");
   const [receivingFile, setReceivingFile] = useState(null);
-  const [, setPendingMessages] = useState([]);
+  const [timeLeft, setTimeLeft] = useState(null);
 
-  // ---- Timer ----
-  const startTimer = (seconds) => {
-    stopTimer();
-    setTimeLeft(seconds);
-    setStatus("waiting");
-    timerRef.current = setInterval(() => {
-      setTimeLeft((prev) => {
-        if (prev <= 1) {
-          stopTimer();
-          alert("No one joined within 2 minutes. Call ended.");
-          disconnect();
-          return 0;
-        }
-        return prev - 1;
-      });
-    }, 1000);
-  };
+  const pc = useRef(null);
+  const ws = useRef(null);
+  const timerRef = useRef(null);
+  const pendingMessages = useRef([]);
 
-  const stopTimer = () => {
+  // ---- STOP TIMER ----
+  const stopTimer = useCallback(() => {
     if (timerRef.current) clearInterval(timerRef.current);
     timerRef.current = null;
     setTimeLeft(null);
-  };
+  }, []);
 
-  // ---- Disconnect ----
+  // ---- DISCONNECT ----
   const disconnect = useCallback(() => {
     stopTimer();
     setStatus("disconnected");
-
-    try {
-      if (chatChannel && chatChannel.readyState !== "closed") chatChannel.close();
-    } catch (_) {}
-
-    cleanupPeerConnection(pc, ws, localVideo, remoteVideo);
-
-    setPc(null);
-    setWs(null);
+    cleanupPeerConnection(pc.current, ws.current, localVideo, remoteVideo);
+    pc.current = null;
+    ws.current = null;
     setChatChannel(null);
     setMessages([]);
     setReceivingFile(null);
-  }, [pc, ws, chatChannel, localVideo, remoteVideo]);
+    pendingMessages.current = [];
+  }, [stopTimer, localVideo, remoteVideo]);
 
-  // ---- Handle incoming chat/file ----
-  const handleIncomingData = (data) => {
+  // ---- START TIMER ----
+  const startTimer = useCallback(
+    (seconds) => {
+      if (timerRef.current) clearInterval(timerRef.current);
+      setTimeLeft(seconds);
+      setStatus("waiting");
+      timerRef.current = setInterval(() => {
+        setTimeLeft((prev) => {
+          if (prev <= 1) {
+            clearInterval(timerRef.current);
+            setStatus("disconnected");
+            alert("No one joined within 2 minutes. Call ended.");
+            disconnect();
+            return 0;
+          }
+          return prev - 1;
+        });
+      }, 1000);
+    },
+    [disconnect] // ✅ FIX: include disconnect
+  );
+
+  // ---- HANDLE INCOMING DATA ----
+  const handleIncomingData = useCallback((data) => {
     if (data instanceof ArrayBuffer) {
       setReceivingFile((prev) =>
         prev ? { ...prev, buffers: [...prev.buffers, data] } : prev
-      );
-      return;
-    }
-    if (data instanceof Blob) {
-      data.arrayBuffer().then((buf) =>
-        setReceivingFile((prev) =>
-          prev ? { ...prev, buffers: [...prev.buffers, buf] } : prev
-        )
       );
       return;
     }
@@ -110,164 +98,161 @@ export default function useCallManager(localVideo, remoteVideo) {
         setMessages((prev) => [...prev, { sender: "remote", text: data }]);
       }
     }
-  };
+  }, []);
 
-  // ---- Setup DataChannel ----
-  const setupDataChannel = (dc, label) => {
-    if (!dc) return;
-    dc.binaryType = "arraybuffer";
-    dc.onmessage = (e) => handleIncomingData(e.data);
-    dc.onopen = () => {
-      console.log(`✅ DataChannel open (${label})`);
-      setChatChannel(dc);
-      setStatus("connected");
-    };
-    dc.onclose = () => setChatChannel(null);
-    dc.onerror = () => setChatChannel(null);
-  };
+  // ---- SEND MESSAGE ----
+  const sendMessage = useCallback(
+    (msg) => {
+      if (!msg.trim()) return;
+      setMessages((prev) => [...prev, { sender: "me", text: msg }]);
+      if (chatChannel && chatChannel.readyState === "open") {
+        chatChannel.send(msg);
+      } else {
+        pendingMessages.current.push(msg);
+      }
+    },
+    [chatChannel]
+  );
 
-  // ---- Start Call ----
-  const startCall = async () => {
-    if (!room.trim()) {
-      alert("⚠️ Enter a Room ID first");
-      return;
-    }
-    if (pc || ws) {
-      alert("⚠️ Already in a call. Disconnect first.");
-      return;
-    }
-
-    const socket = createWebSocket(room, disconnect);
-    setWs(socket);
-
-    socket.onopen = async () => {
-      setStatus("waiting");
-
-      const peer = createPeerConnection(socket, localVideo, remoteVideo, () => {
-        console.log("🎥 Remote track received");
-        stopTimer();
-        setStatus("connected");
-      });
-      setPc(peer);
-
-      // Inbound DC
-      peer.ondatachannel = (event) => setupDataChannel(event.channel, "inbound");
-
-      // Outbound DC
-      const dc = createChatChannel(peer, handleIncomingData);
-      setupDataChannel(dc, "outbound");
-
-      // Local media
-      try {
-        const stream = await navigator.mediaDevices.getUserMedia({
-          video: true,
-          audio: true,
-        });
-        if (localVideo.current) localVideo.current.srcObject = stream;
-        stream.getTracks().forEach((t) => peer.addTrack(t, stream));
-      } catch (err) {
-        alert("Camera/Microphone permission denied");
-        socket.close();
+  // ---- SEND FILE ----
+  const sendFile = useCallback(
+    (file) => {
+      if (!file) return;
+      if (!chatChannel || chatChannel.readyState !== "open") {
+        alert("Chat channel not open");
+        return;
+      }
+      if (file.size > 50 * 1024 * 1024) {
+        alert("File too large (max 50 MB).");
         return;
       }
 
-      // Signaling
-      socket.onmessage = async (event) => {
-        let data;
+      const chunkSize = 16 * 1024;
+      const reader = new FileReader();
+      let offset = 0;
+
+      const readSlice = (o) => {
+        const slice = file.slice(o, o + chunkSize);
+        reader.readAsArrayBuffer(slice);
+      };
+
+      reader.onload = (e) => {
+        chatChannel.send(e.target.result);
+        offset += e.target.result.byteLength;
+        if (offset < file.size) readSlice(offset);
+        else chatChannel.send(JSON.stringify({ fileEnd: file.name }));
+      };
+
+      chatChannel.send(JSON.stringify({ fileStart: file.name, size: file.size }));
+      readSlice(0);
+
+      const fileUrl = URL.createObjectURL(file);
+      setMessages((prev) => [
+        ...prev,
+        { sender: "me", text: "📁 Sent file:", fileName: file.name, fileUrl },
+      ]);
+    },
+    [chatChannel]
+  );
+
+  // ---- START CALL ----
+  const startCall = useCallback(
+    async (room) => {
+      if (!room.trim()) {
+        alert("⚠️ Enter a Room ID first");
+        return;
+      }
+      if (pc.current || ws.current) {
+        alert("⚠️ Already in a call. Disconnect first.");
+        return;
+      }
+
+      const socket = createWebSocket(room, disconnect);
+      ws.current = socket;
+
+      socket.onopen = async () => {
+        setStatus("waiting");
+        const peer = createPeerConnection(
+          socket,
+          localVideo,
+          remoteVideo,
+          () => {
+            stopTimer();
+            setStatus("connected");
+          },
+          handleIncomingData
+        );
+        pc.current = peer;
+
+        // ICE reconnect
+        peer.oniceconnectionstatechange = () => {
+          if (peer.iceConnectionState === "disconnected") {
+            setStatus("reconnecting");
+          }
+          if (peer.iceConnectionState === "failed") {
+            disconnect();
+            startCall(room);
+          }
+        };
+
+        const dc = createChatChannel(peer, handleIncomingData);
+        dc.onopen = () => {
+          setChatChannel(dc);
+          pendingMessages.current.forEach((m) => dc.send(m));
+          pendingMessages.current = [];
+        };
+
         try {
-          data = JSON.parse(event.data);
-        } catch {
+          const stream = await navigator.mediaDevices.getUserMedia({
+            video: true,
+            audio: true,
+          });
+          if (localVideo.current) localVideo.current.srcObject = stream;
+          stream.getTracks().forEach((t) => peer.addTrack(t, stream));
+        } catch (err) {
+          alert("Camera/Mic denied");
+          socket.close();
           return;
         }
 
-        if (data.sdp) {
-          await peer.setRemoteDescription(new RTCSessionDescription(data.sdp));
-          if (data.sdp.type === "offer") {
-            const answer = await peer.createAnswer();
-            await peer.setLocalDescription(answer);
-            socket.send(JSON.stringify({ sdp: peer.localDescription }));
-            stopTimer();
-            setStatus("connected");
-          }
-        } else if (data.ice) {
-          try {
+        socket.onmessage = async (event) => {
+          const data = JSON.parse(event.data);
+          if (data.sdp) {
+            await peer.setRemoteDescription(new RTCSessionDescription(data.sdp));
+            if (data.sdp.type === "offer") {
+              const answer = await peer.createAnswer();
+              await peer.setLocalDescription(answer);
+              socket.send(JSON.stringify({ sdp: peer.localDescription }));
+            }
+          } else if (data.ice) {
             await peer.addIceCandidate(new RTCIceCandidate(data.ice));
-          } catch (err) {
-            console.warn("⚠️ addIceCandidate failed:", err);
           }
-        }
+        };
+
+        const offer = await peer.createOffer();
+        await peer.setLocalDescription(offer);
+        socket.send(JSON.stringify({ sdp: peer.localDescription }));
+        startTimer(120);
       };
+    },
+    [disconnect, handleIncomingData, localVideo, remoteVideo, startTimer, stopTimer]
+  );
 
-      socket.onclose = () => {
-        setStatus("disconnected");
-        setChatChannel(null);
-      };
-
-      // Caller sends offer
-      const offer = await peer.createOffer();
-      await peer.setLocalDescription(offer);
-      socket.send(JSON.stringify({ sdp: peer.localDescription }));
-      startTimer(120);
-    };
-  };
-
-  // ---- Send text ----
-  const sendMessage = () => {
-    if (!chatInput.trim()) return;
-    setMessages((prev) => [...prev, { sender: "me", text: chatInput }]);
-    if (chatChannel?.readyState === "open") {
-      chatChannel.send(chatInput);
-    } else {
-      setPendingMessages((prev) => [...prev, chatInput]);
-    }
-    setChatInput("");
-  };
-
-  // ---- Send file ----
-  const sendFile = (file) => {
-    if (!file || !chatChannel || chatChannel.readyState !== "open") return;
-    const chunkSize = 16 * 1024;
-    const reader = new FileReader();
-    let offset = 0;
-
-    const readSlice = (o) => reader.readAsArrayBuffer(file.slice(o, o + chunkSize));
-
-    reader.onload = (e) => {
-      chatChannel.send(e.target.result);
-      offset += e.target.result.byteLength;
-      if (offset < file.size) readSlice(offset);
-      else chatChannel.send(JSON.stringify({ fileEnd: file.name }));
-    };
-
-    chatChannel.send(JSON.stringify({ fileStart: file.name, size: file.size }));
-    readSlice(0);
-
-    const fileUrl = URL.createObjectURL(file);
-    setMessages((prev) => [
-      ...prev,
-      { sender: "me", text: "📁 Sent file:", fileName: file.name, fileUrl },
-    ]);
-  };
-
-  // Cleanup
   useEffect(() => {
-    return () => disconnect();
+    return () => {
+      disconnect();
+    };
   }, [disconnect]);
 
   return {
-    room,
-    setRoom,
-    timeLeft,
     status,
     messages,
-    chatInput,
-    setChatInput,
+    chatChannel,
     receivingFile,
+    timeLeft,
     startCall,
     disconnect,
     sendMessage,
     sendFile,
-    pc,
-    ws,
   };
 }
