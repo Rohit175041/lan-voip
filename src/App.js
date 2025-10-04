@@ -17,7 +17,7 @@ export default function App() {
   const remoteRef = useRef(null);
 
   const [room, setRoom] = useState("");
-  const [chatInput, setChatInput] = useState(""); // ✅ state for chat input
+  const [chatInput, setChatInput] = useState(""); 
 
   const {
     status,
