@@ -1,4 +1,3 @@
-// App.js
 import React, { useRef, useState, useEffect } from "react";
 import "./App.css";
 
@@ -7,6 +6,8 @@ import StatusIndicator from "./components/StatusIndicator";
 import VideoGrid from "./components/VideoGrid";
 import RoomInput from "./components/RoomInput";
 import TimerProgress from "./components/TimerProgress";
+import ChatBox from "./components/ChatBox";
+import CallButtons from "./components/CallButtons";
 
 import {
   createPeerConnection,
@@ -24,40 +25,35 @@ export default function App() {
   const [room, setRoom] = useState("");
   const [timeLeft, setTimeLeft] = useState(null);
   const timerRef = useRef(null);
-  const [status, setStatus] = useState("disconnected"); // disconnected | waiting | connected | reconnecting
+  const [status, setStatus] = useState("disconnected");
 
+  // Chat state
   const [messages, setMessages] = useState([]);
   const [chatChannel, setChatChannel] = useState(null);
   const [chatInput, setChatInput] = useState("");
-  const [pendingMessages, setPendingMessages] = useState([]);
   const [receivingFile, setReceivingFile] = useState(null);
-  const chatEndRef = useRef(null);
 
-  const heartbeat = useRef(null);
+  // Queued messages (persist across reconnect)
+  const pendingMessagesRef = useRef([]);
+  const setPendingMessages = (updater) => {
+    pendingMessagesRef.current =
+      typeof updater === "function"
+        ? updater(pendingMessagesRef.current)
+        : updater;
+  };
 
-  // ---- Scroll chat ----
-  useEffect(() => {
-    if (chatEndRef.current)
-      chatEndRef.current.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
+  // Signaling/ICE guards
+  const isCallerRef = useRef(false);
+  const madeOfferRef = useRef(false);
+  const remoteDescSetRef = useRef(false);
+  const pendingRemoteICERef = useRef([]);
+  const startedRef = useRef(false); // <-- prevents double init when WS open fires twice
 
-  // ---- Heartbeat ping to keep DC alive ----
-  useEffect(() => {
-    if (chatChannel && chatChannel.readyState === "open") {
-      heartbeat.current = setInterval(() => {
-        try {
-          chatChannel.send(JSON.stringify({ ping: Date.now() }));
-        } catch {}
-      }, 5000);
-    }
-    return () => heartbeat.current && clearInterval(heartbeat.current);
-  }, [chatChannel]);
-
-  // ---- Timer ----
+  // ---- Timer helpers ----
   const startTimer = (seconds) => {
     stopTimer();
     setTimeLeft(seconds);
-    setStatus("waiting");
+    if (status !== "connected") setStatus("waiting");
     timerRef.current = setInterval(() => {
       setTimeLeft((prev) => {
         if (prev <= 1) {
@@ -70,42 +66,54 @@ export default function App() {
       });
     }, 1000);
   };
+
   const stopTimer = () => {
     if (timerRef.current) clearInterval(timerRef.current);
     timerRef.current = null;
     setTimeLeft(null);
   };
 
+  // ---- Flush queued messages ----
+  const flushQueued = (dc) => {
+    setPendingMessages((queued) => {
+      if (dc && dc.readyState === "open" && queued.length) {
+        try {
+          queued.forEach((m) => dc.send(m));
+          console.log(`✅ Flushed ${queued.length} pending messages`);
+          return [];
+        } catch (err) {
+          console.warn("⚠️ Failed flushing queued messages:", err);
+          return queued;
+        }
+      }
+      return queued;
+    });
+  };
+
   // ---- Disconnect ----
   const disconnect = () => {
     stopTimer();
     setStatus("disconnected");
+    try {
+      if (chatChannel && chatChannel.readyState !== "closed") chatChannel.close();
+    } catch (_) {}
+
     cleanupPeerConnection(pc, ws, localVideo, remoteVideo);
+
     setPc(null);
     setWs(null);
     setChatChannel(null);
     setMessages([]);
-    setPendingMessages([]);
     setReceivingFile(null);
+
+    isCallerRef.current = false;
+    madeOfferRef.current = false;
+    remoteDescSetRef.current = false;
+    pendingRemoteICERef.current = [];
+    startedRef.current = false; // allow a future start
   };
 
-  // ---- ICE restart ----
-  const restartICE = async () => {
-    if (!pc || !ws) return;
-    console.log("🔄 Trying ICE restart...");
-    setStatus("reconnecting");
-    try {
-      const offer = await pc.createOffer({ iceRestart: true });
-      await pc.setLocalDescription(offer);
-      ws.send(JSON.stringify({ sdp: pc.localDescription }));
-    } catch (err) {
-      console.error("ICE restart failed:", err);
-      disconnect();
-      startCall(); // full reconnect
-    }
-  };
-
-  // ---- Incoming data ----
+  // ---- Incoming data (chat or file) ----
   const handleIncomingData = (data) => {
     if (data instanceof ArrayBuffer) {
       setReceivingFile((prev) =>
@@ -126,8 +134,6 @@ export default function App() {
     if (typeof data === "string") {
       try {
         const obj = JSON.parse(data);
-        if (obj.ping) return; // ignore heartbeat
-
         if (obj.fileStart) {
           setReceivingFile({ name: obj.fileStart, size: obj.size, buffers: [] });
           return;
@@ -156,6 +162,28 @@ export default function App() {
     }
   };
 
+  // ---- Setup DataChannel ----
+  const setupDataChannel = (dc, label) => {
+    if (!dc) return;
+    dc.binaryType = "arraybuffer";
+    dc.onmessage = (e) => handleIncomingData(e.data);
+    dc.onopen = () => {
+      console.log(`✅ DataChannel open (${label})`);
+      setChatChannel(dc);
+      flushQueued(dc);
+      stopTimer();
+      setStatus("connected");
+    };
+    dc.onclose = () => {
+      console.log(`⚠️ DataChannel closed (${label})`);
+      setChatChannel(null);
+    };
+    dc.onerror = (err) => {
+      console.error(`⚠️ DataChannel error (${label}):`, err);
+      setChatChannel(null);
+    };
+  };
+
   // ---- Start Call ----
   const startCall = async () => {
     if (!room.trim()) {
@@ -167,10 +195,11 @@ export default function App() {
       return;
     }
 
-    const socket = createWebSocket(room, disconnect);
-    setWs(socket);
+    // init function runs once when WS is open
+    const initAfterWsOpen = async () => {
+      if (startedRef.current) return; // prevent double-run
+      startedRef.current = true;
 
-    socket.onopen = async () => {
       setStatus("waiting");
 
       const peer = createPeerConnection(
@@ -178,37 +207,24 @@ export default function App() {
         localVideo,
         remoteVideo,
         () => {
+          console.log("🎥 Remote track received");
           stopTimer();
           setStatus("connected");
-        },
-        handleIncomingData
+        }
       );
+
+      // Helpful ICE/peer logs (diagnostics)
+      peer.oniceconnectionstatechange = () =>
+        console.log("🌐 ICE state:", peer.iceConnectionState);
+      peer.onconnectionstatechange = () =>
+        console.log("🔌 Peer state:", peer.connectionState);
+
       setPc(peer);
 
-      // --- ICE state monitoring ---
-      peer.oniceconnectionstatechange = () => {
-        console.log("ICE:", peer.iceConnectionState);
-        if (peer.iceConnectionState === "disconnected") {
-          setStatus("reconnecting");
-          setTimeout(() => {
-            if (peer.iceConnectionState !== "connected") restartICE();
-          }, 2000);
-        }
-        if (peer.iceConnectionState === "failed") {
-          console.warn("ICE failed — full reconnect");
-          disconnect();
-          startCall();
-        }
-      };
+      // Accept remote-created channels
+      peer.ondatachannel = (event) => setupDataChannel(event.channel, "inbound");
 
-      const dc = createChatChannel(peer, handleIncomingData);
-      dc.onopen = () => {
-        console.log("✅ Chat channel open");
-        setChatChannel(dc);
-        pendingMessages.forEach((m) => dc.send(m));
-        setPendingMessages([]);
-      };
-
+      // Get local media
       try {
         const stream = await navigator.mediaDevices.getUserMedia({
           video: true,
@@ -222,24 +238,116 @@ export default function App() {
         return;
       }
 
+      // Create our outbound DC + initial offer immediately (no server hint needed)
+      if (!madeOfferRef.current) {
+        try {
+          const dc = createChatChannel(peer, handleIncomingData);
+          setupDataChannel(dc, "outbound");
+        } catch (e) {
+          console.warn("Could not create outbound DataChannel; will rely on inbound.", e);
+        }
+
+        try {
+          const offer = await peer.createOffer();
+          await peer.setLocalDescription(offer);
+          socket.send(JSON.stringify({ sdp: peer.localDescription }));
+          madeOfferRef.current = true;
+          isCallerRef.current = true;
+        } catch (err) {
+          console.error("❌ Failed to create/send initial offer:", err);
+        }
+      }
+
+      // ---- Signaling
       socket.onmessage = async (event) => {
-        const data = JSON.parse(event.data);
+        let data = null;
+        try {
+          data = JSON.parse(event.data);
+        } catch (err) {
+          console.warn("Bad signaling payload:", err);
+          return;
+        }
+
         if (data.sdp) {
-          await peer.setRemoteDescription(new RTCSessionDescription(data.sdp));
-          if (data.sdp.type === "offer") {
-            const answer = await peer.createAnswer();
-            await peer.setLocalDescription(answer);
-            socket.send(JSON.stringify({ sdp: peer.localDescription }));
+          const desc = new RTCSessionDescription(data.sdp);
+          try {
+            if (desc.type === "offer") {
+              // Handle glare: if not stable, rollback our local offer first
+              if (peer.signalingState !== "stable") {
+                try {
+                  await peer.setLocalDescription({ type: "rollback" });
+                } catch (e) {
+                  console.warn("Rollback failed (continuing):", e);
+                }
+              }
+              await peer.setRemoteDescription(desc);
+              remoteDescSetRef.current = true;
+
+              // Apply queued ICE now that remote desc is set
+              const queued = pendingRemoteICERef.current;
+              pendingRemoteICERef.current = [];
+              for (const ice of queued) {
+                try {
+                  await peer.addIceCandidate(new RTCIceCandidate(ice));
+                } catch (e) {
+                  console.warn("⚠️ queued addIceCandidate failed:", e);
+                }
+              }
+
+              const answer = await peer.createAnswer();
+              await peer.setLocalDescription(answer);
+              socket.send(JSON.stringify({ sdp: peer.localDescription }));
+              stopTimer();
+              setStatus("connected");
+            } else if (desc.type === "answer") {
+              await peer.setRemoteDescription(desc);
+              remoteDescSetRef.current = true;
+
+              const queued = pendingRemoteICERef.current;
+              pendingRemoteICERef.current = [];
+              for (const ice of queued) {
+                try {
+                  await peer.addIceCandidate(new RTCIceCandidate(ice));
+                } catch (e) {
+                  console.warn("⚠️ queued addIceCandidate failed:", e);
+                }
+              }
+              stopTimer();
+              setStatus("connected");
+            }
+          } catch (err) {
+            console.error("Error applying SDP:", err);
           }
         } else if (data.ice) {
-          await peer.addIceCandidate(new RTCIceCandidate(data.ice));
+          if (!remoteDescSetRef.current) {
+            pendingRemoteICERef.current.push(data.ice);
+          } else {
+            try {
+              await peer.addIceCandidate(new RTCIceCandidate(data.ice));
+            } catch (err) {
+              console.warn("⚠️ addIceCandidate failed:", err);
+            }
+          }
         } else if (data.type === "roomSize") {
-          if (data.count >= 2) {
-            stopTimer();
-            setStatus("connected");
-          } else if (data.count === 1) {
+          // Optional: still support the roomSize hint
+          if (data.count >= 2 && !madeOfferRef.current) {
+            try {
+              const dc = createChatChannel(peer, handleIncomingData);
+              setupDataChannel(dc, "outbound");
+            } catch (_) {}
+            try {
+              const offer = await peer.createOffer();
+              await peer.setLocalDescription(offer);
+              socket.send(JSON.stringify({ sdp: peer.localDescription }));
+              madeOfferRef.current = true;
+              isCallerRef.current = true;
+              stopTimer();
+              setStatus("connected");
+            } catch (err) {
+              console.error("❌ Failed to create/send offer (roomSize path):", err);
+            }
+          } else if (data.count < 2) {
             startTimer(120);
-            setStatus("waiting");
           }
         } else if (data.type === "timeout") {
           alert(data.message || "Call ended due to inactivity.");
@@ -247,19 +355,40 @@ export default function App() {
         }
       };
 
-      const offer = await peer.createOffer();
-      await peer.setLocalDescription(offer);
-      socket.send(JSON.stringify({ sdp: peer.localDescription }));
+      // If the WS closes later, reflect that in UI
+      socket.onclose = () => {
+        console.warn("⚠️ WebSocket closed");
+        setStatus("disconnected");
+        setChatChannel(null);
+      };
+
       startTimer(120);
     };
+
+    // Create WS and run init when it actually opens
+    const socket = createWebSocket(room, disconnect, initAfterWsOpen);
+    setWs(socket);
+
+    // ---- Defensive fallback (in case signaling.js didn't call onOpen)
+    if (socket.readyState === WebSocket.OPEN) {
+      initAfterWsOpen();
+    } else {
+      // will run only once
+      socket.addEventListener("open", initAfterWsOpen, { once: true });
+    }
   };
 
   // ---- Send text ----
   const sendMessage = () => {
     if (!chatInput.trim()) return;
     setMessages((prev) => [...prev, { sender: "me", text: chatInput }]);
+
     if (chatChannel && chatChannel.readyState === "open") {
-      chatChannel.send(chatInput);
+      try {
+        chatChannel.send(chatInput);
+      } catch (err) {
+        setPendingMessages((prev) => [...prev, chatInput]);
+      }
     } else {
       setPendingMessages((prev) => [...prev, chatInput]);
     }
@@ -304,105 +433,44 @@ export default function App() {
     ]);
   };
 
+  useEffect(() => {
+    return () => {
+      try {
+        disconnect();
+      } catch (_) {}
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // ---- UI ----
   return (
     <div className="app-container">
-      <Header />
-      <StatusIndicator status={status} />
-      <VideoGrid localRef={localVideo} remoteRef={remoteVideo} />
-      <RoomInput room={room} setRoom={setRoom} />
-      {timeLeft !== null && <TimerProgress timeLeft={timeLeft} />}
-
-      {(status === "connected" || status === "reconnecting") && (
-        <div style={{
-            marginTop: "1rem", width: "340px", height: "300px",
-            display: "flex", flexDirection: "column", borderRadius: "12px",
-            background: "rgba(30,30,30,0.85)", backdropFilter: "blur(8px)",
-            overflow: "hidden", boxShadow: "0 6px 20px rgba(0,0,0,0.4)"
-          }}>
-          <div style={{
-              padding: "0.6rem 1rem", background: "rgba(255,255,255,0.05)",
-              borderBottom: "1px solid rgba(255,255,255,0.1)", fontSize: "0.95rem",
-              color: "#ddd"
-            }}>
-            💬 Chat {status === "reconnecting" && " (Reconnecting...) "}
+      <div className="card-wrapper">
+        <Header />
+        <div className="call-card">
+          <div className="status-wrapper">
+            <StatusIndicator status={status} />
           </div>
 
-          <div style={{
-              flex: 1, overflowY: "auto", padding: "0.75rem",
-              display: "flex", flexDirection: "column", gap: "8px"
-            }}>
-            {receivingFile && (
-              <div style={{ color: "#ccc", fontSize: "0.8rem", margin: "4px" }}>
-                Receiving <b>{receivingFile.name}</b>…
-              </div>
-            )}
-            {messages.map((m, i) => (
-              <div key={i} style={{
-                    display: "flex",
-                    justifyContent: m.sender === "me" ? "flex-end" : "flex-start"
-                  }}>
-                <div style={{
-                      background: m.sender === "me" ? "#4caf50" : "#2196f3",
-                      color: "#fff", padding: "8px 12px",
-                      borderRadius: m.sender === "me"
-                        ? "16px 16px 0 16px"
-                        : "16px 16px 16px 0",
-                      maxWidth: "75%", fontSize: "0.9rem", wordBreak: "break-word"
-                    }}>
-                  {m.fileUrl ? (
-                    <a href={m.fileUrl} download={m.fileName}
-                       style={{ color: "#fff", textDecoration: "underline" }}>
-                      📁 {m.fileName}
-                    </a>
-                  ) : m.text}
-                </div>
-              </div>
-            ))}
-            <div ref={chatEndRef}></div>
-          </div>
+          <VideoGrid localRef={localVideo} remoteRef={remoteVideo} />
+          {status !== "connected" && <RoomInput room={room} setRoom={setRoom} />}
+          {timeLeft !== null && <TimerProgress timeLeft={timeLeft} />}
+          <ChatBox
+            status={status}
+            messages={messages}
+            chatInput={chatInput}
+            setChatInput={setChatInput}
+            sendMessage={sendMessage}
+            sendFile={sendFile}
+            receivingFile={receivingFile}
+          />
 
-          {/* ---- Bottom bar ---- */}
-          <div style={{
-                display: "flex", padding: "0.5rem",
-                background: "rgba(255,255,255,0.05)",
-                borderTop: "1px solid rgba(255,255,255,0.1)"
-              }}>
-            <input type="file"
-              onChange={(e) => { if (e.target.files.length) sendFile(e.target.files[0]); }}
-              style={{ display: "none" }} id="fileInput" />
-            <label htmlFor="fileInput" style={{
-                background: "#4caf50", borderRadius: "50%", width: "38px",
-                height: "38px", display: "flex", justifyContent: "center",
-                alignItems: "center", cursor: "pointer", marginRight: "0.5rem",
-                fontSize: "1.1rem", color: "#fff" }} title="Send File">📎</label>
-
-            <input
-              value={chatInput}
-              onChange={(e) => setChatInput(e.target.value)}
-              onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); sendMessage(); } }}
-              placeholder={ chatChannel ? "Type a message..." : "Connecting chat..." }
-              style={{
-                flex: 1, padding: "0.5rem 0.75rem", borderRadius: "20px",
-                border: "none", fontSize: "0.9rem", marginRight: "0.5rem",
-                background: "rgba(255,255,255,0.15)", color: "#fff", outline: "none"
-              }}
-              disabled={status === "waiting" || status === "disconnected"} />
-            <button onClick={sendMessage} style={{
-                background: "#4caf50", border: "none", color: "#fff",
-                borderRadius: "50%", width: "38px", height: "38px", cursor: "pointer",
-                display: "flex", justifyContent: "center", alignItems: "center",
-                fontSize: "1.1rem" }} title="Send Message">➤</button>
-          </div>
+          <CallButtons
+            onStart={startCall}
+            onDisconnect={disconnect}
+            disabled={!!pc || !!ws}
+          />
         </div>
-      )}
-
-      <div className="button-group">
-        <button onClick={startCall}
-                disabled={pc || ws}
-                className={`btn ${pc || ws ? "btn-disabled" : "btn-green"}`}>
-          📞 Start Call
-        </button>
-        <button onClick={disconnect} className="btn btn-red">❌ Disconnect</button>
       </div>
     </div>
   );
