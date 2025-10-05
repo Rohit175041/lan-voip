@@ -88,7 +88,7 @@ https://github.com/Rohit175041/lan-voip
 ```
 ---
 
-## ⚙️ Architecture Overview
+## ⚙️ UI
 
 <p align="center">
   <img src="./assets/p2p.webp" alt="WebRTC Signaling and P2P Flow" width="700"/>
