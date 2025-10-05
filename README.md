@@ -58,10 +58,11 @@ src/
 
 1. Clone the repository:
 
-   ```bash
-   git clone https://github.com/your-username/p2p-video-call.git
-   cd p2p-video-call
-   ```
+```
+Frontend : https://github.com/Rohit175041/voip_server
+cd voip_server
+Backend : https://github.com/Rohit175041/lan-voip
+```
 
 2. Install dependencies:
 
@@ -81,17 +82,12 @@ src/
    ```bash
    npm start
    ```
-5. Github backend and frontend repo
-```
-https://github.com/Rohit175041/voip_server
-https://github.com/Rohit175041/lan-voip
-```
 ---
 
 ## ⚙️ UI
 
 <p align="center">
-  <img src="./assets/p2p.webp" alt="WebRTC Signaling and P2P Flow" width="700"/>
+  <img src="./assets/safelink_ui.jpg" alt="WebRTC Signaling and P2P Flow" width="700"/>
 </p>
 
 ## 📡 How It Works
