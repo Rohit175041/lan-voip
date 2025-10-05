@@ -11,11 +11,12 @@ import { useState, useCallback } from "react";
 export default function useFileShare(setMessages) {
   const [receivingFile, setReceivingFile] = useState(null);
 
-  /** Handle incoming file data (called when data channel receives a message) */
+  /** ---- HANDLE INCOMING FILE DATA ---- */
   const handleFileData = useCallback(
     (data) => {
       // Binary chunk
       if (data instanceof ArrayBuffer) {
+        console.log("📥 [File] Received chunk:", data.byteLength, "bytes");
         setReceivingFile((prev) =>
           prev ? { ...prev, buffers: [...prev.buffers, data] } : prev
         );
@@ -28,13 +29,13 @@ export default function useFileShare(setMessages) {
           const obj = JSON.parse(data);
 
           if (obj.fileStart) {
-            // Start receiving
+            console.log("📦 [File] Start receiving:", obj.fileStart, obj.size, "bytes");
             setReceivingFile({ name: obj.fileStart, size: obj.size, buffers: [] });
             return;
           }
 
           if (obj.fileEnd) {
-            // File finished
+            console.log("✅ [File] Finished receiving");
             setReceivingFile((prev) => {
               if (!prev) return null;
               const blob = new Blob(prev.buffers);
@@ -52,59 +53,57 @@ export default function useFileShare(setMessages) {
                 ]);
               }
 
-              return null; // reset
+              return null; // reset receiving state
             });
             return;
           }
         } catch (err) {
-          console.warn("[useFileShare] Failed to parse data:", err);
+          // Not JSON → ignore
+          console.warn("[useFileShare] Failed to parse message:", err);
         }
       }
     },
     [setMessages]
   );
 
-  /** Send a file over the data channel */
+  /** ---- SEND FILE ---- */
   const sendFile = useCallback(
-    (file, chatChannel) => {
+    async (file, chatChannel) => {
       if (!file || !chatChannel) return;
+      if (chatChannel.readyState !== "open") {
+        alert("Chat channel not open");
+        return;
+      }
       if (file.size > 50 * 1024 * 1024) {
-        alert("File too large (max 50 MB)");
+        alert("File too large (max 50 MB).");
         return;
       }
 
-      console.log("📦 [File] Sending:", file.name);
+      console.log("📦 [File] Sending:", file.name, file.size, "bytes");
       const chunkSize = 16 * 1024;
-      const reader = new FileReader();
       let offset = 0;
 
-      const readSlice = (o) => {
-        const slice = file.slice(o, o + chunkSize);
-        reader.readAsArrayBuffer(slice);
-      };
+      const readAndSend = async () => {
+        while (offset < file.size) {
+          // Respect backpressure
+          if (chatChannel.bufferedAmount > 65536) {
+            await new Promise((r) => setTimeout(r, 50));
+            continue;
+          }
 
-      reader.onload = (e) => {
-        if (chatChannel.readyState !== "open") {
-          console.warn("[useFileShare] Channel not open, stopping send");
-          return;
+          const slice = file.slice(offset, offset + chunkSize);
+          const buffer = await slice.arrayBuffer();
+          chatChannel.send(buffer);
+          offset += buffer.byteLength;
         }
 
-        const buffer = e.target.result;
-        chatChannel.send(buffer);
-        offset += buffer.byteLength;
-
-        if (offset < file.size) {
-          readSlice(offset);
-        } else {
-          // Done
-          chatChannel.send(JSON.stringify({ fileEnd: file.name }));
-          console.log("✅ File sent:", file.name);
-        }
+        chatChannel.send(JSON.stringify({ fileEnd: file.name }));
+        console.log("✅ [File] Sent:", file.name);
       };
 
-      // Notify receiver a file is coming
+      // Notify receiver first
       chatChannel.send(JSON.stringify({ fileStart: file.name, size: file.size }));
-      readSlice(0);
+      readAndSend();
 
       // Add to local chat UI
       if (typeof setMessages === "function") {

@@ -14,19 +14,22 @@ export default function useCallManager(local, remote) {
   const pc = useRef(null);
   const ws = useRef(null);
 
+  // Timer / call status
   const { timeLeft, status, setStatus, startTimer, stopTimer } = useTime();
+
+  // Chat state
   const {
     messages,
+    setMessages,            // ✅ expose setter to pass to file share
     sendMessage,
     attachChatChannel,
     setChatChannel,
-    // chatChannel  <-- removed unused variable
   } = useChat();
 
-  // ❌ Old: const { receivingFile, handleFileData, sendFile } = useFileShare(setMessages);
-  // ✅ New: just call useFileShare() with no args (or adapt if your hook expects messages)
-  const { receivingFile, handleFileData, sendFile } = useFileShare();
+  // File share
+  const { receivingFile, handleFileData, sendFile } = useFileShare(setMessages); // ✅ pass setter
 
+  /** ---- DISCONNECT / CLEANUP ---- */
   const disconnect = useCallback(() => {
     console.log("🔌 [disconnect] Cleanup");
     stopTimer();
@@ -37,6 +40,7 @@ export default function useCallManager(local, remote) {
     setChatChannel(null);
   }, [stopTimer, setStatus, local, remote, setChatChannel]);
 
+  /** ---- START CALL ---- */
   const startCall = useCallback(
     async (room) => {
       if (!room.trim()) {
@@ -62,16 +66,21 @@ export default function useCallManager(local, remote) {
         });
         pc.current = peer;
 
+        /** ---- INCOMING DATA CHANNEL ---- */
         peer.ondatachannel = (e) => {
           console.log("📡 Incoming channel:", e.channel.label);
-          attachChatChannel(e.channel);
+          const channel = e.channel;
+          channel.binaryType = "arraybuffer"; // ✅ important for file chunks
+          attachChatChannel(channel);
+          channel.onmessage = (msg) => handleFileData(msg.data);
         };
 
-        const dc = createChatChannel(peer, (data) => {
-          handleFileData(data);
-        });
+        /** ---- OUTGOING DATA CHANNEL ---- */
+        const dc = createChatChannel(peer, (data) => handleFileData(data));
+        dc.binaryType = "arraybuffer"; // ✅ ensure binary mode
         attachChatChannel(dc);
 
+        /** ---- LOCAL MEDIA ---- */
         const stream = await navigator.mediaDevices.getUserMedia({
           video: true,
           audio: true,
@@ -79,6 +88,7 @@ export default function useCallManager(local, remote) {
         if (local.current) local.current.srcObject = stream;
         stream.getTracks().forEach((t) => peer.addTrack(t, stream));
 
+        /** ---- SIGNALING ---- */
         socket.onmessage = async (event) => {
           const data = JSON.parse(event.data);
           if (data.sdp) {
@@ -96,12 +106,23 @@ export default function useCallManager(local, remote) {
         const offer = await peer.createOffer();
         await peer.setLocalDescription(offer);
         socket.send(JSON.stringify({ sdp: peer.localDescription }));
+
         startTimer(120);
       };
     },
-    [disconnect, stopTimer, setStatus, attachChatChannel, handleFileData, startTimer, local, remote]
+    [
+      disconnect,
+      stopTimer,
+      setStatus,
+      attachChatChannel,
+      handleFileData,
+      startTimer,
+      local,
+      remote,
+    ]
   );
 
+  /** ---- CLEANUP ON UNMOUNT ---- */
   useEffect(() => {
     return () => disconnect();
   }, [disconnect]);
