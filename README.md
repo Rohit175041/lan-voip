@@ -88,6 +88,12 @@ https://github.com/Rohit175041/lan-voip
 ```
 ---
 
+## ⚙️ Architecture Overview
+
+<p align="center">
+  <img src="./assets/p2p.webp" alt="WebRTC Signaling and P2P Flow" width="700"/>
+</p>
+
 ## 📡 How It Works
 
 1. User enters a **Room ID** and clicks **Start Call**.
@@ -118,7 +124,11 @@ https://github.com/Rohit175041/lan-voip
 * 🔐 End-to-end encryption for chat/files
 * 🌐 Deploy signaling server on cloud (Render)
 
-
+### link
+```
+https://lan-voip.onrender.com
+```
 ### 👨‍💻 Author
 
 Developed by **Rohit Singh** ✨
+
