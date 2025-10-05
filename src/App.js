@@ -1,6 +1,5 @@
 // App.js
-import React, { useRef, useState } from "react";
-import { FaPhone, FaPhoneSlash } from "react-icons/fa";
+import React, { useRef, useState, useEffect } from "react";
 import "./App.css";
 
 import Header from "./components/Header";
@@ -8,7 +7,6 @@ import StatusIndicator from "./components/StatusIndicator";
 import VideoGrid from "./components/VideoGrid";
 import RoomInput from "./components/RoomInput";
 import TimerProgress from "./components/TimerProgress";
-import ChatBox from "./components/ChatBox";
 
 import {
   createPeerConnection,
@@ -28,14 +26,21 @@ export default function App() {
   const timerRef = useRef(null);
   const [status, setStatus] = useState("disconnected");
 
-  // Chat state
+  // Chat + file
   const [messages, setMessages] = useState([]);
   const [chatChannel, setChatChannel] = useState(null);
   const [chatInput, setChatInput] = useState("");
-  const [, setPendingMessages] = useState([]);
+  const [pendingMessages, setPendingMessages] = useState([]);
   const [receivingFile, setReceivingFile] = useState(null);
+  const chatEndRef = useRef(null);
 
-  // ---- Timer helpers ----
+  // ---- Auto scroll chat ----
+  useEffect(() => {
+    if (chatEndRef.current)
+      chatEndRef.current.scrollIntoView({ behavior: "smooth" });
+  }, [messages]);
+
+  // ---- Timer ----
   const startTimer = (seconds) => {
     stopTimer();
     setTimeLeft(seconds);
@@ -52,50 +57,26 @@ export default function App() {
       });
     }, 1000);
   };
-
   const stopTimer = () => {
     if (timerRef.current) clearInterval(timerRef.current);
     timerRef.current = null;
     setTimeLeft(null);
   };
 
-  // ---- Flush queued messages ----
-  const flushQueued = (dc) => {
-    setPendingMessages((queued) => {
-      if (dc && dc.readyState === "open" && queued.length) {
-        try {
-          queued.forEach((m) => dc.send(m));
-          console.log(`✅ Flushed ${queued.length} pending messages`);
-          return [];
-        } catch (err) {
-          console.warn("⚠️ Failed flushing queued messages:", err);
-          return queued;
-        }
-      }
-      return queued;
-    });
-  };
-
-  // ---- Disconnect ----
+  // ---- Disconnect / cleanup ----
   const disconnect = () => {
     stopTimer();
     setStatus("disconnected");
-
-    try {
-      if (chatChannel && chatChannel.readyState !== "closed") chatChannel.close();
-    } catch (_) {}
-
     cleanupPeerConnection(pc, ws, localVideo, remoteVideo);
-
     setPc(null);
     setWs(null);
     setChatChannel(null);
-    // ✅ Keep pendingMessages so they flush after reconnect
     setMessages([]);
+    setPendingMessages([]);
     setReceivingFile(null);
   };
 
-  // ---- Incoming data (chat or file) ----
+  // ---- Incoming data ----
   const handleIncomingData = (data) => {
     if (data instanceof ArrayBuffer) {
       setReceivingFile((prev) =>
@@ -117,10 +98,12 @@ export default function App() {
       try {
         const obj = JSON.parse(data);
         if (obj.fileStart) {
+          console.log("📦 File transfer start:", obj.fileStart);
           setReceivingFile({ name: obj.fileStart, size: obj.size, buffers: [] });
           return;
         }
         if (obj.fileEnd) {
+          console.log("✅ File transfer finished");
           setReceivingFile((prev) => {
             if (!prev) return null;
             const blob = new Blob(prev.buffers);
@@ -142,27 +125,6 @@ export default function App() {
         setMessages((prev) => [...prev, { sender: "remote", text: data }]);
       }
     }
-  };
-
-  // ---- Setup DataChannel (inbound or outbound) ----
-  const setupDataChannel = (dc, label) => {
-    dc.binaryType = "arraybuffer";
-    dc.onmessage = (e) => handleIncomingData(e.data);
-    dc.onopen = () => {
-      console.log(`✅ DataChannel open (${label})`);
-      setChatChannel(dc);
-      flushQueued(dc);
-      stopTimer();
-      setStatus("connected");
-    };
-    dc.onclose = () => {
-      console.log(`⚠️ DataChannel closed (${label})`);
-      setChatChannel(null);
-    };
-    dc.onerror = (err) => {
-      console.error(`⚠️ DataChannel error (${label}):`, err);
-      setChatChannel(null);
-    };
   };
 
   // ---- Start Call ----
@@ -187,21 +149,21 @@ export default function App() {
         localVideo,
         remoteVideo,
         () => {
-          console.log("🎥 Remote track received");
           stopTimer();
           setStatus("connected");
-        }
+        },
+        handleIncomingData
       );
       setPc(peer);
 
-      // Inbound DC
-      peer.ondatachannel = (event) => setupDataChannel(event.channel, "inbound");
-
-      // Outbound DC
       const dc = createChatChannel(peer, handleIncomingData);
-      setupDataChannel(dc, "outbound");
+      dc.onopen = () => {
+        console.log("✅ Chat channel open");
+        setChatChannel(dc);
+        pendingMessages.forEach((m) => dc.send(m));
+        setPendingMessages([]);
+      };
 
-      // Get local media
       try {
         const stream = await navigator.mediaDevices.getUserMedia({
           video: true,
@@ -215,31 +177,22 @@ export default function App() {
         return;
       }
 
-      // Handle signaling
       socket.onmessage = async (event) => {
         const data = JSON.parse(event.data);
-        console.log("📩 Signaling:", data);
-
         if (data.sdp) {
           await peer.setRemoteDescription(new RTCSessionDescription(data.sdp));
           if (data.sdp.type === "offer") {
             const answer = await peer.createAnswer();
             await peer.setLocalDescription(answer);
             socket.send(JSON.stringify({ sdp: peer.localDescription }));
-            stopTimer();
-            setStatus("connected");
           }
         } else if (data.ice) {
-          try {
-            await peer.addIceCandidate(new RTCIceCandidate(data.ice));
-          } catch (err) {
-            console.warn("⚠️ addIceCandidate failed:", err);
-          }
+          await peer.addIceCandidate(new RTCIceCandidate(data.ice));
         } else if (data.type === "roomSize") {
           if (data.count >= 2) {
             stopTimer();
             setStatus("connected");
-          } else {
+          } else if (data.count === 1) {
             startTimer(120);
             setStatus("waiting");
           }
@@ -249,21 +202,10 @@ export default function App() {
         }
       };
 
-      socket.onclose = () => {
-        console.warn("⚠️ WebSocket closed");
-        setStatus("disconnected");
-        setChatChannel(null);
-      };
-
-      // Caller: send offer
-      try {
-        const offer = await peer.createOffer();
-        await peer.setLocalDescription(offer);
-        socket.send(JSON.stringify({ sdp: peer.localDescription }));
-        startTimer(120);
-      } catch (err) {
-        console.error("❌ Failed to create/send offer:", err);
-      }
+      const offer = await peer.createOffer();
+      await peer.setLocalDescription(offer);
+      socket.send(JSON.stringify({ sdp: peer.localDescription }));
+      startTimer(120);
     };
   };
 
@@ -271,13 +213,8 @@ export default function App() {
   const sendMessage = () => {
     if (!chatInput.trim()) return;
     setMessages((prev) => [...prev, { sender: "me", text: chatInput }]);
-
     if (chatChannel && chatChannel.readyState === "open") {
-      try {
-        chatChannel.send(chatInput);
-      } catch (err) {
-        setPendingMessages((prev) => [...prev, chatInput]);
-      }
+      chatChannel.send(chatInput);
     } else {
       setPendingMessages((prev) => [...prev, chatInput]);
     }
@@ -322,43 +259,196 @@ export default function App() {
     ]);
   };
 
-  // ---- UI (unchanged) ----
   return (
     <div className="app-container">
-      <div className="card-wrapper">
-        <Header />
-        <div className="call-card">
-          <div className="status-wrapper">
-            <StatusIndicator status={status} />
+      <Header />
+      <StatusIndicator status={status} />
+      <VideoGrid localRef={localVideo} remoteRef={remoteVideo} />
+      <RoomInput room={room} setRoom={setRoom} />
+      {timeLeft !== null && <TimerProgress timeLeft={timeLeft} />}
+
+      {status === "connected" && (
+        <div
+          style={{
+            marginTop: "1rem",
+            width: "340px",
+            height: "300px",
+            display: "flex",
+            flexDirection: "column",
+            borderRadius: "12px",
+            background: "rgba(30,30,30,0.85)",
+            backdropFilter: "blur(8px)",
+            overflow: "hidden",
+            boxShadow: "0 6px 20px rgba(0,0,0,0.4)",
+          }}
+        >
+          <div
+            style={{
+              padding: "0.6rem 1rem",
+              background: "rgba(255,255,255,0.05)",
+              borderBottom: "1px solid rgba(255,255,255,0.1)",
+              fontSize: "0.95rem",
+              color: "#ddd",
+            }}
+          >
+            💬 Chat
           </div>
 
-          <VideoGrid localRef={localVideo} remoteRef={remoteVideo} />
-          <RoomInput room={room} setRoom={setRoom} />
-          {timeLeft !== null && <TimerProgress timeLeft={timeLeft} />}
+          <div
+            style={{
+              flex: 1,
+              overflowY: "auto",
+              padding: "0.75rem",
+              display: "flex",
+              flexDirection: "column",
+              gap: "8px",
+            }}
+          >
+            {/* ✅ File receiving progress indicator */}
+            {receivingFile && (
+              <div style={{ color: "#ccc", fontSize: "0.8rem", margin: "4px" }}>
+                Receiving <b>{receivingFile.name}</b>…
+              </div>
+            )}
 
-          <ChatBox
-            status={status}
-            messages={messages}
-            chatInput={chatInput}
-            setChatInput={setChatInput}
-            sendMessage={sendMessage}
-            sendFile={sendFile}
-            receivingFile={receivingFile}
-          />
+            {messages.map((m, i) => (
+              <div
+                key={i}
+                style={{
+                  display: "flex",
+                  justifyContent: m.sender === "me" ? "flex-end" : "flex-start",
+                }}
+              >
+                <div
+                  style={{
+                    background: m.sender === "me" ? "#4caf50" : "#2196f3",
+                    color: "#fff",
+                    padding: "8px 12px",
+                    borderRadius:
+                      m.sender === "me"
+                        ? "16px 16px 0 16px"
+                        : "16px 16px 16px 0",
+                    maxWidth: "75%",
+                    fontSize: "0.9rem",
+                    wordBreak: "break-word",
+                  }}
+                >
+                  {m.fileUrl ? (
+                    <a
+                      href={m.fileUrl}
+                      download={m.fileName}
+                      style={{
+                        color: "#fff",
+                        textDecoration: "underline",
+                      }}
+                    >
+                      📁 {m.fileName}
+                    </a>
+                  ) : (
+                    m.text
+                  )}
+                </div>
+              </div>
+            ))}
+            <div ref={chatEndRef}></div>
+          </div>
 
-          <div className="button-group">
-            <button
-              onClick={startCall}
-              disabled={!!pc || !!ws}
-              className={`btn ${pc || ws ? "btn-disabled" : "btn-green"}`}
+          {/* ---- Bottom bar ---- */}
+          <div
+            style={{
+              display: "flex",
+              padding: "0.5rem",
+              background: "rgba(255,255,255,0.05)",
+              borderTop: "1px solid rgba(255,255,255,0.1)",
+            }}
+          >
+            <input
+              type="file"
+              onChange={(e) => {
+                if (e.target.files.length) sendFile(e.target.files[0]);
+              }}
+              style={{ display: "none" }}
+              id="fileInput"
+            />
+            <label
+              htmlFor="fileInput"
+              style={{
+                background: "#4caf50",
+                borderRadius: "50%",
+                width: "38px",
+                height: "38px",
+                display: "flex",
+                justifyContent: "center",
+                alignItems: "center",
+                cursor: "pointer",
+                marginRight: "0.5rem",
+                fontSize: "1.1rem",
+                color: "#fff",
+              }}
+              title="Send File"
             >
-              <FaPhone /> Start Call
-            </button>
-            <button onClick={disconnect} className="btn btn-red">
-              <FaPhoneSlash /> Disconnect
+              📎
+            </label>
+
+            <input
+              value={chatInput}
+              onChange={(e) => setChatInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  sendMessage();
+                }
+              }}
+              placeholder={
+                chatChannel ? "Type a message..." : "Connecting chat..."
+              }
+              style={{
+                flex: 1,
+                padding: "0.5rem 0.75rem",
+                borderRadius: "20px",
+                border: "none",
+                fontSize: "0.9rem",
+                marginRight: "0.5rem",
+                background: "rgba(255,255,255,0.15)",
+                color: "#fff",
+                outline: "none",
+              }}
+              disabled={status !== "connected"}
+            />
+            <button
+              onClick={sendMessage}
+              style={{
+                background: "#4caf50",
+                border: "none",
+                color: "#fff",
+                borderRadius: "50%",
+                width: "38px",
+                height: "38px",
+                cursor: "pointer",
+                display: "flex",
+                justifyContent: "center",
+                alignItems: "center",
+                fontSize: "1.1rem",
+              }}
+              title="Send Message"
+            >
+              ➤
             </button>
           </div>
         </div>
+      )}
+
+      <div className="button-group">
+        <button
+          onClick={startCall}
+          disabled={pc || ws}
+          className={`btn ${pc || ws ? "btn-disabled" : "btn-green"}`}
+        >
+          📞 Start Call
+        </button>
+        <button onClick={disconnect} className="btn btn-red">
+          ❌ Disconnect
+        </button>
       </div>
     </div>
   );

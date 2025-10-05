@@ -1,4 +1,4 @@
-export function createWebSocket(room, onClose, onOpen) {
+export function createWebSocket(room, onClose) {
   const isLocal =
     window.location.hostname === "localhost" ||
     window.location.hostname === "127.0.0.1";
@@ -10,18 +10,7 @@ export function createWebSocket(room, onClose, onOpen) {
       : `wss://${window.location.hostname}/ws`);
 
   const socket = new WebSocket(`${base}?room=${encodeURIComponent(room)}`);
-
-  socket.onopen = () => {
-    console.log("🔗 WebSocket connected to signaling server");
-    if (typeof onOpen === "function") onOpen();
-  };
-
   socket.onerror = (err) => console.error("❌ WebSocket error:", err);
-
-  socket.onclose = () => {
-    console.warn("⚠️ WebSocket closed");
-    if (typeof onClose === "function") onClose();
-  };
-
+  socket.onclose = onClose;
   return socket;
 }

@@ -1,18 +1,26 @@
-import React from "react";
-import "./TimerProgress.css";
-
-export default function TimerProgress({ timeLeft, totalTime = 120 }) {
-  const percentage = Math.max(0, Math.round((timeLeft / totalTime) * 100));
-
+export default function TimerProgress({ timeLeft }) {
   return (
-    <div className="progress-container">
+    <div style={{ marginTop: "0.5rem", textAlign: "center", width: "250px" }}>
       <div
-        className="progress-bar"
-        style={{ width: `${percentage}%` }}
-      ></div>
-      <span className="progress-text">
+        style={{
+          height: "8px",
+          background: "#eee",
+          borderRadius: "5px",
+          overflow: "hidden",
+        }}
+      >
+        <div
+          style={{
+            height: "8px",
+            width: `${(timeLeft / 120) * 100}%`,
+            background: "#ff9800",
+            transition: "width 1s linear",
+          }}
+        />
+      </div>
+      <div style={{ marginTop: "5px", fontSize: "0.9rem", color: "#fff" }}>
         Waiting... {timeLeft}s
-      </span>
+      </div>
     </div>
   );
 }

@@ -5,12 +5,15 @@
  * @param {RefObject<HTMLVideoElement>} localVideo
  * @param {RefObject<HTMLVideoElement>} remoteVideo
  * @param {Function} onConnected      - Called when remote media is attached.
+ * @param {Function|null} onChatMessage - Called when DataChannel receives data (string | ArrayBuffer).
+ *                                        Pass null if you are the caller (to avoid duplicate listeners).
  */
 export function createPeerConnection(
   socket,
   localVideo,
   remoteVideo,
-  onConnected
+  onConnected,
+  onChatMessage
 ) {
   const peer = new RTCPeerConnection({
     iceServers: [
@@ -40,8 +43,22 @@ export function createPeerConnection(
     if (typeof onConnected === "function") onConnected();
   };
 
-  // ✅ Removed duplicate `peer.ondatachannel` handler.
-  // DataChannel will now only be handled in App.js
+  // ---- DataChannel (callee side) ----
+  peer.ondatachannel = (event) => {
+    const channel = event.channel;
+    console.log("📡 DataChannel received:", channel.label);
+
+    // Required for sending/receiving ArrayBuffer chunks
+    channel.binaryType = "arraybuffer";
+
+    channel.onopen = () => console.log("✅ DataChannel open (callee)");
+    channel.onclose = () => console.log("⚠️ DataChannel closed (callee)");
+    channel.onerror = (err) => console.error("⚠️ DataChannel error:", err);
+
+    channel.onmessage = (e) => {
+      if (typeof onChatMessage === "function") onChatMessage(e.data);
+    };
+  };
 
   return peer;
 }
