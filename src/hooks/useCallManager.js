@@ -4,15 +4,28 @@ import useTime from "./useTime";
 import useChat from "./useChat";
 import useFileShare from "./useFileShare";
 import { createWebSocket } from "../utils/signaling";
-import { createPeerConnection, cleanupPeerConnection, createChatChannel } from "../utils/webrtc";
+import {
+  createPeerConnection,
+  cleanupPeerConnection,
+  createChatChannel,
+} from "../utils/webrtc";
 
 export default function useCallManager(local, remote) {
   const pc = useRef(null);
   const ws = useRef(null);
 
   const { timeLeft, status, setStatus, startTimer, stopTimer } = useTime();
-  const { messages, sendMessage, chatChannel, attachChatChannel, setChatChannel } = useChat();
-  const { receivingFile, handleFileData, sendFile } = useFileShare(setMessages);
+  const {
+    messages,
+    sendMessage,
+    attachChatChannel,
+    setChatChannel,
+    // chatChannel  <-- removed unused variable
+  } = useChat();
+
+  // ❌ Old: const { receivingFile, handleFileData, sendFile } = useFileShare(setMessages);
+  // ✅ New: just call useFileShare() with no args (or adapt if your hook expects messages)
+  const { receivingFile, handleFileData, sendFile } = useFileShare();
 
   const disconnect = useCallback(() => {
     console.log("🔌 [disconnect] Cleanup");
@@ -59,7 +72,10 @@ export default function useCallManager(local, remote) {
         });
         attachChatChannel(dc);
 
-        const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: true,
+          audio: true,
+        });
         if (local.current) local.current.srcObject = stream;
         stream.getTracks().forEach((t) => peer.addTrack(t, stream));
 
