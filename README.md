@@ -59,9 +59,8 @@ src/
 1. Clone the repository:
 
 ```
-Frontend : https://github.com/Rohit175041/voip_server
+https://github.com/Rohit175041/voip_server
 cd voip_server
-Backend : https://github.com/Rohit175041/lan-voip
 ```
 
 2. Install dependencies:
@@ -120,10 +119,11 @@ Backend : https://github.com/Rohit175041/lan-voip
 * 🔐 End-to-end encryption for chat/files
 * 🌐 Deploy signaling server on cloud (Render)
 
-### link
-```
-https://lan-voip.onrender.com
-```
+## 🌐 Project Links
+- 🖥️ **Backend Repository:** [voip_server](https://github.com/Rohit175041/voip_server)
+- 💻 **Frontend Repository:** [lan-voip](https://github.com/Rohit175041/lan-voip)
+- 🚀 **Live Demo:** [lan-voip.onrender.com](https://lan-voip.onrender.com)
+
 ### 👨‍💻 Author
 
 Developed by **Rohit Singh** ✨
