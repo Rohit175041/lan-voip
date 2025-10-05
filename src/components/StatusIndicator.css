@@ -1,0 +1,46 @@
+/* =======================
+   STATUS BALL
+   ======================= */
+.status-ball {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, 0.7); /* ✅ subtle white border */
+  box-shadow: 0 0 6px rgba(0, 0, 0, 0.4),
+              0 0 8px rgba(255, 255, 255, 0.15); /* ✅ soft outer glow */
+  transition: background-color 0.3s ease, box-shadow 0.3s ease;
+}
+
+/* Connected = glowing green */
+.status-ball.connected {
+  background-color: #27ae60;
+  box-shadow: 0 0 6px rgba(0, 0, 0, 0.4),
+              0 0 12px rgba(39, 174, 96, 0.7);
+}
+
+/* Waiting = pulsing yellow */
+.status-ball.waiting {
+  background-color: #f1c40f;
+  box-shadow: 0 0 6px rgba(0, 0, 0, 0.4),
+              0 0 12px rgba(241, 196, 15, 0.7);
+  animation: pulse-yellow 1.5s infinite;
+}
+
+/* Disconnected = red */
+.status-ball.disconnected {
+  background-color: #e74c3c;
+  box-shadow: 0 0 6px rgba(0, 0, 0, 0.4),
+              0 0 12px rgba(231, 76, 60, 0.7);
+}
+
+/* =======================
+   ANIMATIONS
+   ======================= */
+@keyframes pulse-yellow {
+  0% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(1.2); opacity: 0.7; }
+  100% { transform: scale(1); opacity: 1; }
+}

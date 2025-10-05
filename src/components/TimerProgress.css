@@ -1,0 +1,43 @@
+/* =======================
+   PROGRESS CONTAINER
+   ======================= */
+.progress-container {
+  width: 100%;
+  max-width: 420px;
+  height: 20px;
+  background: rgba(255, 255, 255, 0.1);  /* ✅ glassy bg */
+  border-radius: 12px;
+  position: relative;
+  overflow: hidden;
+  margin: 1rem auto;
+  box-shadow: inset 0 2px 6px rgba(0, 0, 0, 0.25);
+  backdrop-filter: blur(6px);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+/* =======================
+   PROGRESS BAR
+   ======================= */
+.progress-bar {
+  height: 100%;
+  background: linear-gradient(90deg, #00c853, #00e676); /* ✅ modern green gradient */
+  border-radius: 12px;
+  transition: width 0.4s ease-in-out;
+  box-shadow: 0 2px 8px rgba(0, 230, 118, 0.4);
+}
+
+/* =======================
+   PROGRESS TEXT
+   ======================= */
+.progress-text {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #fff;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
+  pointer-events: none;
+  letter-spacing: 0.5px;
+}

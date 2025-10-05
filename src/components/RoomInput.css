@@ -1,0 +1,99 @@
+/* =======================
+   ROOM INPUT CONTAINER
+   ======================= */
+.room-container {
+  margin: 1rem 0;
+  display: flex;
+  flex-direction: column; /* ✅ stack input + error vertically */
+  justify-content: center;
+  align-items: center;
+  width: 100%;
+  padding: 0 0.5rem;       /* ✅ prevent edge clipping */
+  box-sizing: border-box;
+}
+
+/* Outer wrapper */
+.room-input-wrapper {
+  width: 100%;
+  max-width: 420px;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 25px;
+  padding: 0.6rem 1.2rem;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  backdrop-filter: blur(10px);
+  transition: box-shadow 0.3s ease, border 0.3s ease;
+  margin: 0 auto;
+  min-width: 0;               /* ✅ allow shrinking */
+  box-sizing: border-box;     /* ✅ ensures padding is inside width */
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+/* Input field */
+.room-input {
+  flex: 1;
+  min-width: 0;               /* ✅ critical: prevents overflow */
+  border: none;
+  background: transparent;
+  text-align: center;
+  color: #f1f1f1;
+  font-size: 0.95rem;
+  outline: none;
+}
+
+.room-input::placeholder {
+  color: rgba(255, 255, 255, 0.4);
+}
+
+/* Highlight when focused */
+.room-input-wrapper:focus-within {
+  box-shadow: 0 0 0 2px #00e676, 0 0 12px rgba(0, 230, 118, 0.7);
+  border: none;
+}
+
+/* Error state */
+.room-input-error {
+  box-shadow: 0 0 0 2px #ff4d4d, 0 0 10px rgba(255, 77, 77, 0.5);
+  border: none;
+}
+
+/* Error message */
+.room-error {
+  color: #ff4d4d;
+  font-size: 0.8rem;
+  margin-top: 0.4rem;
+  text-align: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+
+.room-error::before {
+  content: "⚠";
+  font-size: 0.9rem;
+}
+
+/* 📱 Responsive tweaks */
+@media (max-width: 768px) {
+  .room-input-wrapper {
+    max-width: 100%;
+    min-width: 0;
+  }
+
+  .room-input {
+    font-size: 0.9rem;
+  }
+}
+
+@media (max-width: 480px) {
+  .room-input-wrapper {
+    max-width: 100%;   /* ✅ full width inside card */
+    padding: 0.5rem 1rem;
+  }
+
+  .room-input {
+    font-size: 0.85rem;
+  }
+}
