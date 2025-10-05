@@ -4,7 +4,7 @@
 .chat-container {
   display: flex;
   flex-direction: column;
-  max-height: 40vh; /* Default for desktop */
+  max-height: 40vh;
   background: rgba(255, 255, 255, 0.06); /* glassy bg */
   backdrop-filter: blur(12px);
   border-radius: 16px;
@@ -53,7 +53,7 @@
    MESSAGE BUBBLES
    ======================= */
 .chat-message {
-  max-width: 70%;
+  max-width: 70%;                  /* ✅ prevent stretching across screen */
   background: rgba(0, 200, 120, 0.9);
   border-radius: 14px;
   font-size: 0.85rem;
@@ -66,10 +66,11 @@
   position: relative;
   box-shadow: 0 3px 8px rgba(0, 0, 0, 0.3);
 
+  /* ✅ fix long message wrapping */
   word-wrap: break-word;
   word-break: break-word;
   overflow-wrap: break-word;
-  white-space: pre-wrap; /* preserve line breaks */
+  white-space: pre-wrap; /* preserves line breaks but still wraps */
 }
 
 .chat-message.me {
@@ -87,7 +88,7 @@
   color: rgba(255, 255, 255, 0.75);
   margin-left: 6px;
   white-space: nowrap;
-  flex-shrink: 0;
+  flex-shrink: 0;         /* ✅ stops shrinking text */
   align-self: flex-end;
 }
 
@@ -171,10 +172,10 @@
    ======================= */
 @media (max-width: 768px) {
   .chat-container {
-    max-height: 30vh;   /* 🔽 smaller for tablets */
+    max-height: 45vh;
   }
   .chat-message {
-    max-width: 80%;
+    max-width: 85%;
     font-size: 0.8rem;
   }
   .msg-time {
@@ -184,7 +185,7 @@
 
 @media (max-width: 480px) {
   .chat-container {
-    max-height: 25vh;   /* 🔽 much smaller for phones */
+    max-height: 50vh;
   }
   .chat-footer {
     flex-direction: row;
@@ -196,7 +197,7 @@
   }
   .chat-btn,
   .file-btn {
-    width: 30px;
-    height: 30px;
+    width: 32px;
+    height: 32px;
   }
 }
