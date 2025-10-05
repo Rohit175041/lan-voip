@@ -27,19 +27,29 @@ A **React-based real-time video calling app** that enables two users to connect 
 ## 📂 Project Structure
 
 ```
-├── src
-│   ├── components
-│   │   ├── Header.js / Header.css
-│   │   ├── StatusIndicator.js / StatusIndicator.css
-│   │   ├── VideoGrid.js / VideoGrid.css
-│   │   ├── RoomInput.js / RoomInput.css
-│   │   ├── TimerProgress.js / TimerProgress.css
-│   │   ├── ChatBox.js / ChatBox.css 
-│   ├── utils
-│   │   ├── webrtc.js      # WebRTC logic (peer, ICE, DataChannel)
-│   │   ├── signaling.js  # WebSocket connection helper
-│   ├── App.js
-│   ├── App.css
+src/
+├── components/
+│   ├── Header.js / Header.css
+│   ├── StatusIndicator.js / StatusIndicator.css
+│   ├── VideoGrid.js / VideoGrid.css
+│   ├── RoomInput.js / RoomInput.css
+│   ├── TimerProgress.js / TimerProgress.css
+│   ├── ChatBox.js / ChatBox.css
+│   ├── CallButtons.js / CallButtons.css
+│
+├── hooks/
+│   ├── useCallManager.js   # Main call logic (WebRTC setup & signaling)
+│   ├── useChat.js          # Handles chat messages via DataChannel
+│   ├── useFileShare.js     # Handles file sending/receiving via DataChannel
+│   ├── useTime.js          # Manages waiting/disconnect timer
+│
+├── utils/
+│   ├── signaling.js        # WebSocket connection helper
+│   ├── webrtc.js           # WebRTC peer setup, ICE handling
+│
+├── App.js                  # Root component, connects UI & logic
+├── App.css                 # Global styles & glassmorphic layout
+└── index.js                # React entry point
 ```
 
 ---

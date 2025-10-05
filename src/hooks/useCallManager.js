@@ -1,304 +1,100 @@
 // src/hooks/useCallManager.js
-import { useRef, useState, useEffect, useCallback } from "react";
-import {
-  createPeerConnection,
-  cleanupPeerConnection,
-  createChatChannel,
-} from "../utils/webrtc";
+import { useRef, useCallback, useEffect } from "react";
+import useTime from "./useTime";
+import useChat from "./useChat";
+import useFileShare from "./useFileShare";
 import { createWebSocket } from "../utils/signaling";
+import { createPeerConnection, cleanupPeerConnection, createChatChannel } from "../utils/webrtc";
 
-/**
- * Custom hook to handle WebRTC call logic
- */
 export default function useCallManager(local, remote) {
-  const [status, setStatus] = useState("disconnected");
-  const [messages, setMessages] = useState([]);
-  const [chatChannel, setChatChannel] = useState(null);
-  const [receivingFile, setReceivingFile] = useState(null);
-  const [timeLeft, setTimeLeft] = useState(null);
-
   const pc = useRef(null);
   const ws = useRef(null);
-  const timerRef = useRef(null);
-  const pendingMessages = useRef([]);
 
-  /** ---- CLEANUP ---- */
-  const stopTimer = useCallback(() => {
-    if (timerRef.current) clearInterval(timerRef.current);
-    timerRef.current = null;
-    setTimeLeft(null);
-  }, []);
+  const { timeLeft, status, setStatus, startTimer, stopTimer } = useTime();
+  const { messages, sendMessage, chatChannel, attachChatChannel, setChatChannel } = useChat();
+  const { receivingFile, handleFileData, sendFile } = useFileShare(setMessages);
 
   const disconnect = useCallback(() => {
-    console.log("🔌 [disconnect] Closing call & cleaning up...");
+    console.log("🔌 [disconnect] Cleanup");
     stopTimer();
     setStatus("disconnected");
     cleanupPeerConnection(pc.current, ws.current, local, remote);
     pc.current = null;
     ws.current = null;
     setChatChannel(null);
-    setMessages([]);
-    setReceivingFile(null);
-    pendingMessages.current = [];
-  }, [stopTimer, local, remote]);
+  }, [stopTimer, setStatus, local, remote, setChatChannel]);
 
-  /** ---- TIMER ---- */
-  const startTimer = useCallback(
-    (seconds) => {
-      console.log(`⏳ [timer] Started waiting timer for ${seconds}s`);
-      if (timerRef.current) clearInterval(timerRef.current);
-      setTimeLeft(seconds);
-      setStatus("waiting");
-      timerRef.current = setInterval(() => {
-        setTimeLeft((prev) => {
-          if (prev <= 1) {
-            console.warn("⌛ [timer] Timeout reached, disconnecting");
-            clearInterval(timerRef.current);
-            timerRef.current = null;
-            setStatus("disconnected");
-            alert("No one joined within 2 minutes. Call ended.");
-            disconnect();
-            return 0;
-          }
-          return prev - 1;
-        });
-      }, 1000);
-    },
-    [disconnect]
-  );
-
-  /** ---- INCOMING DATA ---- */
-  const handleIncomingData = useCallback((data) => {
-    console.log("📩 [DataChannel] Incoming:", data);
-    if (data instanceof ArrayBuffer) {
-      setReceivingFile((prev) =>
-        prev ? { ...prev, buffers: [...prev.buffers, data] } : prev
-      );
-      return;
-    }
-
-    if (typeof data === "string") {
-      try {
-        const obj = JSON.parse(data);
-        if (obj.fileStart) {
-          console.log("📦 [File] Start receiving:", obj.fileStart);
-          setReceivingFile({ name: obj.fileStart, size: obj.size, buffers: [] });
-          return;
-        }
-        if (obj.fileEnd) {
-          console.log("✅ [File] Finished receiving");
-          setReceivingFile((prev) => {
-            if (!prev) return null;
-            const blob = new Blob(prev.buffers);
-            const url = URL.createObjectURL(blob);
-            setMessages((p) => [
-              ...p,
-              {
-                sender: "remote",
-                text: "📁 Received file:",
-                fileName: prev.name,
-                fileUrl: url,
-              },
-            ]);
-            return null;
-          });
-          return;
-        }
-      } catch {
-        console.log("💬 [Chat] Remote:", data);
-        setMessages((prev) => [...prev, { sender: "remote", text: data }]);
-      }
-    }
-  }, []);
-
-  /** ---- SEND MESSAGE ---- */
-  const sendMessage = useCallback(
-    (msg) => {
-      if (!msg.trim()) return;
-      console.log("💬 [Chat] Sending:", msg);
-      setMessages((prev) => [...prev, { sender: "me", text: msg }]);
-      if (chatChannel && chatChannel.readyState === "open") {
-        chatChannel.send(msg);
-      } else {
-        console.warn("💬 [Chat] Channel not open — queueing");
-        pendingMessages.current.push(msg);
-      }
-    },
-    [chatChannel]
-  );
-
-  /** ---- SEND FILE ---- */
-  const sendFile = useCallback(
-    (file) => {
-      if (!file) return;
-      if (!chatChannel || chatChannel.readyState !== "open") {
-        alert("Chat channel not open");
-        return;
-      }
-      if (file.size > 50 * 1024 * 1024) {
-        alert("File too large (max 50 MB).");
-        return;
-      }
-
-      console.log("📦 [File] Sending:", file.name, file.size, "bytes");
-      const chunkSize = 16 * 1024;
-      const reader = new FileReader();
-      let offset = 0;
-
-      const readSlice = (o) => {
-        const slice = file.slice(o, o + chunkSize);
-        reader.readAsArrayBuffer(slice);
-      };
-
-      reader.onload = (e) => {
-        chatChannel.send(e.target.result);
-        offset += e.target.result.byteLength;
-        if (offset < file.size) readSlice(offset);
-        else chatChannel.send(JSON.stringify({ fileEnd: file.name }));
-      };
-
-      chatChannel.send(JSON.stringify({ fileStart: file.name, size: file.size }));
-      readSlice(0);
-
-      const fileUrl = URL.createObjectURL(file);
-      setMessages((prev) => [
-        ...prev,
-        { sender: "me", text: "📁 Sent file:", fileName: file.name, fileUrl },
-      ]);
-    },
-    [chatChannel]
-  );
-
-  /** ---- START CALL ---- */
   const startCall = useCallback(
     async (room) => {
       if (!room.trim()) {
-        alert("⚠️ Enter a Room ID first");
-        return;
-      }
-      if (pc.current || ws.current) {
-        alert("⚠️ Already in a call. Disconnect first.");
+        alert("Enter Room ID");
         return;
       }
 
-      console.log("🚀 [startCall] Creating WebSocket for room:", room);
+      if (pc.current || ws.current) {
+        alert("Already in call");
+        return;
+      }
+
+      console.log("🚀 [Call] Starting for room:", room);
       const socket = createWebSocket(room, disconnect);
       ws.current = socket;
 
       socket.onopen = async () => {
-        console.log("🔗 [WebSocket] Connected to signaling server");
         setStatus("waiting");
-
-        console.log("🛠️ [Peer] Creating RTCPeerConnection...");
         const peer = createPeerConnection(socket, local, remote, () => {
-          console.log("✅ [Peer] Remote stream added");
+          console.log("✅ Remote stream added");
           stopTimer();
           setStatus("connected");
         });
         pc.current = peer;
 
-        peer.oniceconnectionstatechange = () => {
-          console.log("🌐 [ICE] state:", peer.iceConnectionState);
-          if (peer.iceConnectionState === "disconnected") {
-            setStatus("reconnecting");
-          }
-          if (peer.iceConnectionState === "failed") {
-            console.warn("⚠️ [ICE] failed — restarting call");
-            disconnect();
-            startCall(room);
-          }
-        };
-
-        // Accept remote-created data channels
         peer.ondatachannel = (e) => {
-          console.log("📡 [DataChannel] Incoming:", e.channel.label);
-          const dc = e.channel;
-          dc.binaryType = "arraybuffer";
-          dc.onmessage = (msg) => handleIncomingData(msg.data);
-          dc.onopen = () => {
-            console.log("✅ [DataChannel] Open (incoming)");
-            setChatChannel(dc);
-            pendingMessages.current.forEach((m) => dc.send(m));
-            pendingMessages.current = [];
-          };
+          console.log("📡 Incoming channel:", e.channel.label);
+          attachChatChannel(e.channel);
         };
 
-        // Caller creates a DC
-        console.log("📡 [DataChannel] Creating outbound channel");
-        const dc = createChatChannel(peer, handleIncomingData);
-        dc.onopen = () => {
-          console.log("✅ [DataChannel] Open (outgoing)");
-          setChatChannel(dc);
-          pendingMessages.current.forEach((m) => dc.send(m));
-          pendingMessages.current = [];
-        };
+        const dc = createChatChannel(peer, (data) => {
+          handleFileData(data);
+        });
+        attachChatChannel(dc);
 
-        try {
-          console.log("🎥 [Media] Requesting camera & mic");
-          const stream = await navigator.mediaDevices.getUserMedia({
-            video: true,
-            audio: true,
-          });
-          if (local.current) local.current.srcObject = stream;
-          stream.getTracks().forEach((t) => peer.addTrack(t, stream));
-        } catch (err) {
-          console.error("❌ [Media] Error:", err);
-          alert("Camera/Mic denied");
-          socket.close();
-          return;
-        }
+        const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+        if (local.current) local.current.srcObject = stream;
+        stream.getTracks().forEach((t) => peer.addTrack(t, stream));
 
         socket.onmessage = async (event) => {
-          console.log("📩 [WebSocket] Received:", event.data);
           const data = JSON.parse(event.data);
           if (data.sdp) {
-            console.log("📜 [SDP] Type:", data.sdp.type);
             await peer.setRemoteDescription(new RTCSessionDescription(data.sdp));
             if (data.sdp.type === "offer") {
               const answer = await peer.createAnswer();
               await peer.setLocalDescription(answer);
               socket.send(JSON.stringify({ sdp: peer.localDescription }));
-              console.log("📤 [SDP] Sent answer");
             }
           } else if (data.ice) {
-            console.log("🧊 [ICE] Adding remote candidate");
             await peer.addIceCandidate(new RTCIceCandidate(data.ice));
           }
         };
 
-        console.log("📤 [SDP] Creating offer...");
         const offer = await peer.createOffer();
         await peer.setLocalDescription(offer);
         socket.send(JSON.stringify({ sdp: peer.localDescription }));
-        console.log("📤 [SDP] Sent offer");
-
         startTimer(120);
       };
-
-      socket.onerror = (err) => {
-        console.error("❌ [WebSocket] Error:", err);
-      };
-
-      socket.onclose = () => {
-        console.warn("⚠️ [WebSocket] Closed");
-      };
     },
-    [disconnect, handleIncomingData, local, remote, startTimer, stopTimer]
+    [disconnect, stopTimer, setStatus, attachChatChannel, handleFileData, startTimer, local, remote]
   );
 
-  /** ---- CLEANUP ---- */
   useEffect(() => {
-    return () => {
-      disconnect();
-    };
+    return () => disconnect();
   }, [disconnect]);
 
   return {
     status,
-    messages,
-    chatChannel,
-    receivingFile,
     timeLeft,
+    messages,
+    receivingFile,
     startCall,
     disconnect,
     sendMessage,
