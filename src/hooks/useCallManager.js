@@ -14,24 +14,29 @@ export default function useCallManager(local, remote) {
   const pc = useRef(null);
   const ws = useRef(null);
 
-  // Timer / call status
+  // Custom hooks
   const { timeLeft, status, setStatus, startTimer, stopTimer } = useTime();
-
-  // Chat state
   const {
     messages,
-    setMessages,            // ✅ expose setter to pass to file share
-    sendMessage,
-    attachChatChannel,
+    setMessages,
+    chatChannel,
     setChatChannel,
+    attachChatChannel,
+    handleIncomingChat,
+    sendMessage,
   } = useChat();
+  const { receivingFile, handleFileData, sendFile: sendFileInternal } =
+    useFileShare(setMessages);
 
-  // File share
-  const { receivingFile, handleFileData, sendFile } = useFileShare(setMessages); // ✅ pass setter
+  // Wrap sendFile so user doesn't have to pass chatChannel
+  const sendFile = useCallback(
+    (file) => sendFileInternal(file, chatChannel),
+    [sendFileInternal, chatChannel]
+  );
 
-  /** ---- DISCONNECT / CLEANUP ---- */
+  /** ---- DISCONNECT ---- */
   const disconnect = useCallback(() => {
-    console.log("🔌 [disconnect] Cleanup");
+    console.log("🔌 [disconnect] Cleaning up...");
     stopTimer();
     setStatus("disconnected");
     cleanupPeerConnection(pc.current, ws.current, local, remote);
@@ -43,22 +48,17 @@ export default function useCallManager(local, remote) {
   /** ---- START CALL ---- */
   const startCall = useCallback(
     async (room) => {
-      if (!room.trim()) {
-        alert("Enter Room ID");
-        return;
-      }
+      if (!room.trim()) return alert("Enter Room ID");
+      if (pc.current || ws.current) return alert("Already in a call");
 
-      if (pc.current || ws.current) {
-        alert("Already in call");
-        return;
-      }
-
-      console.log("🚀 [Call] Starting for room:", room);
+      console.log("🚀 [startCall] Room:", room);
       const socket = createWebSocket(room, disconnect);
       ws.current = socket;
 
       socket.onopen = async () => {
+        console.log("🔗 WebSocket connected");
         setStatus("waiting");
+
         const peer = createPeerConnection(socket, local, remote, () => {
           console.log("✅ Remote stream added");
           stopTimer();
@@ -66,47 +66,62 @@ export default function useCallManager(local, remote) {
         });
         pc.current = peer;
 
-        /** ---- INCOMING DATA CHANNEL ---- */
+        /** ---- Data Channels ---- */
         peer.ondatachannel = (e) => {
-          console.log("📡 Incoming channel:", e.channel.label);
+          console.log("📡 Incoming data channel:", e.channel.label);
           const channel = e.channel;
-          channel.binaryType = "arraybuffer"; // ✅ important for file chunks
+          channel.binaryType = "arraybuffer";
           attachChatChannel(channel);
-          channel.onmessage = (msg) => handleFileData(msg.data);
+          channel.onmessage = (ev) => {
+            handleFileData(ev.data);
+            handleIncomingChat(ev.data);
+          };
         };
 
-        /** ---- OUTGOING DATA CHANNEL ---- */
-        const dc = createChatChannel(peer, (data) => handleFileData(data));
-        dc.binaryType = "arraybuffer"; // ✅ ensure binary mode
+        const dc = createChatChannel(peer, (data) => {
+          handleFileData(data);
+          handleIncomingChat(data);
+        });
+        dc.binaryType = "arraybuffer";
         attachChatChannel(dc);
 
-        /** ---- LOCAL MEDIA ---- */
-        const stream = await navigator.mediaDevices.getUserMedia({
-          video: true,
-          audio: true,
-        });
-        if (local.current) local.current.srcObject = stream;
-        stream.getTracks().forEach((t) => peer.addTrack(t, stream));
+        /** ---- Media ---- */
+        try {
+          const stream = await navigator.mediaDevices.getUserMedia({
+            video: true,
+            audio: true,
+          });
+          if (local.current) local.current.srcObject = stream;
+          stream.getTracks().forEach((t) => peer.addTrack(t, stream));
+        } catch (err) {
+          console.error("❌ Media error:", err);
+          alert("Camera/Mic denied");
+          socket.close();
+          return;
+        }
 
-        /** ---- SIGNALING ---- */
+        /** ---- Signaling ---- */
         socket.onmessage = async (event) => {
-          const data = JSON.parse(event.data);
-          if (data.sdp) {
-            await peer.setRemoteDescription(new RTCSessionDescription(data.sdp));
-            if (data.sdp.type === "offer") {
-              const answer = await peer.createAnswer();
-              await peer.setLocalDescription(answer);
-              socket.send(JSON.stringify({ sdp: peer.localDescription }));
+          try {
+            const data = JSON.parse(event.data);
+            if (data.sdp) {
+              await peer.setRemoteDescription(new RTCSessionDescription(data.sdp));
+              if (data.sdp.type === "offer") {
+                const answer = await peer.createAnswer();
+                await peer.setLocalDescription(answer);
+                socket.send(JSON.stringify({ sdp: peer.localDescription }));
+              }
+            } else if (data.ice) {
+              await peer.addIceCandidate(new RTCIceCandidate(data.ice));
             }
-          } else if (data.ice) {
-            await peer.addIceCandidate(new RTCIceCandidate(data.ice));
+          } catch (err) {
+            console.warn("[Signaling] Invalid message", err);
           }
         };
 
         const offer = await peer.createOffer();
         await peer.setLocalDescription(offer);
         socket.send(JSON.stringify({ sdp: peer.localDescription }));
-
         startTimer(120);
       };
     },
@@ -116,13 +131,14 @@ export default function useCallManager(local, remote) {
       setStatus,
       attachChatChannel,
       handleFileData,
+      handleIncomingChat,
       startTimer,
       local,
       remote,
     ]
   );
 
-  /** ---- CLEANUP ON UNMOUNT ---- */
+  /** ---- CLEANUP ---- */
   useEffect(() => {
     return () => disconnect();
   }, [disconnect]);
