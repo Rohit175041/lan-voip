@@ -55,7 +55,8 @@
 }
 
 @media (max-width: 480px) {
-  .button-group {
-    grid-template-columns: 1fr;
+  .btn {
+    padding: 0.52rem 0.7rem;
+    font-size: 0.82rem;
   }
 }

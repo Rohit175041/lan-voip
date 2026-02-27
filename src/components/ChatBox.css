@@ -160,7 +160,16 @@
 
 @media (max-width: 768px) {
   .chat-container {
-    min-height: 190px;
-    max-height: 270px;
+    min-height: 150px;
+    max-height: 34vh;
+  }
+
+  .chat-messages {
+    padding: 0.5rem 0.55rem;
+  }
+
+  .chat-message {
+    max-width: 84%;
+    font-size: 0.8rem;
   }
 }

@@ -51,7 +51,7 @@ export default function App() {
       <div className="card-wrapper">
         <Header />
 
-        <div className="call-card">
+        <div className={`call-card ${status === "connected" ? "call-card-connected" : ""}`}>
           <StatusIndicator status={status} />
           <VideoGrid
             localRef={localRef}
