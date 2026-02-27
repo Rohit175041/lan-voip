@@ -5,6 +5,8 @@
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 0.9rem;
   margin: 0.7rem 0 1rem;
+  width: 100%;
+  min-width: 0;
 }
 
 .video-card {
@@ -16,6 +18,9 @@
   background: #e2e8f0;
   box-shadow: 0 4px 14px rgba(15, 23, 42, 0.08);
   min-height: 220px;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
 }
 
 .video-card::after {
@@ -27,6 +32,7 @@
 }
 
 .video-element {
+  display: block;
   width: 100%;
   height: 100%;
   object-fit: cover;
@@ -108,10 +114,22 @@
 @media (max-width: 768px) {
   .video-grid {
     grid-template-columns: 1fr;
-    gap: 0.7rem;
+    gap: 0.55rem;
+    margin: 0.5rem 0 0.75rem;
   }
 
   .video-card {
-    aspect-ratio: 16 / 9;
+    aspect-ratio: 4 / 3;
+    min-height: 180px;
+  }
+
+  .video-controls {
+    right: 0.45rem;
+    bottom: 0.45rem;
+  }
+
+  .video-control-btn {
+    width: 32px;
+    height: 32px;
   }
 }

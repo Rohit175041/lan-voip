@@ -20,6 +20,7 @@ export default function useCallManager(local, remote) {
   const ws = useRef(null);
   const timerRef = useRef(null);
   const pendingMessages = useRef([]);
+  const downloadSeq = useRef(0);
 
   const stopTimer = useCallback(() => {
     if (timerRef.current) clearInterval(timerRef.current);
@@ -98,6 +99,27 @@ export default function useCallManager(local, remote) {
   );
 
   const handleIncomingData = useCallback((data) => {
+    const downloadBlob = (blob, filename) => {
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    };
+
+    const timestampSuffix = () => {
+      const now = new Date();
+      const pad = (n) => String(n).padStart(2, "0");
+      const suffix = `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(
+        now.getDate()
+      )}-${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
+      downloadSeq.current += 1;
+      return `${suffix}-${downloadSeq.current}`;
+    };
+
     log.debug("DataChannel", "Incoming data:", data);
 
     if (data instanceof ArrayBuffer) {
@@ -122,6 +144,7 @@ export default function useCallManager(local, remote) {
             if (!prev) return null;
             const blob = new Blob(prev.buffers);
             const url = URL.createObjectURL(blob);
+            downloadBlob(blob, `received-${timestampSuffix()}-${prev.name}`);
             setMessages((p) => [
               ...p,
               {
@@ -139,6 +162,8 @@ export default function useCallManager(local, remote) {
         }
       } catch {
         log.info("Chat", `Message received: "${data}"`);
+        const chatBlob = new Blob([data], { type: "text/plain;charset=utf-8" });
+        downloadBlob(chatBlob, `chat-message-${timestampSuffix()}.txt`);
         setMessages((prev) => [
           ...prev,
           { sender: "remote", text: data, timestamp: Date.now() },

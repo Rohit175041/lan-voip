@@ -18,3 +18,13 @@
   font-size: 0.88rem;
   color: var(--text-muted);
 }
+
+@media (max-width: 768px) {
+  .header-title {
+    font-size: 1.45rem;
+  }
+
+  .header-subtitle {
+    font-size: 0.8rem;
+  }
+}

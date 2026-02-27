@@ -9,6 +9,7 @@
 .card-wrapper {
   width: 100%;
   max-width: 980px;
+  min-width: 0;
 }
 
 .call-card {
@@ -20,6 +21,9 @@
   border: 1px solid var(--border-soft);
   background: var(--surface);
   box-shadow: 0 8px 24px rgba(15, 23, 42, 0.08);
+  width: 100%;
+  min-width: 0;
+  overflow: hidden;
 }
 
 .join-panel {
@@ -43,12 +47,22 @@
 }
 
 @media (max-width: 768px) {
+  .app-container {
+    padding: 0.9rem 0.7rem;
+  }
+
+  .card-wrapper {
+    max-width: 100%;
+  }
+
   .call-card {
-    padding: 0.8rem;
+    padding: 0.75rem;
+    gap: 0.7rem;
   }
 
   .join-panel {
     grid-template-columns: 1fr;
-    max-width: 560px;
+    max-width: 100%;
+    gap: 0.5rem;
   }
 }
