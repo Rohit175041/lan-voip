@@ -24,8 +24,12 @@ export default function App() {
     messages,
     receivingFile,
     timeLeft,
+    isCameraOn,
+    isMicOn,
     startCall,
     disconnect,
+    toggleCamera,
+    toggleMic,
     sendMessage,
     sendFile,
   } = useCallManager(localRef, remoteRef);
@@ -37,27 +41,47 @@ export default function App() {
     }
   };
 
+  const canStart =
+    status === "disconnected" &&
+    room.trim().length >= 6;
+  const canDisconnect = status !== "disconnected";
+
   return (
     <div className="app-container">
       <div className="card-wrapper">
         <Header />
+
         <div className="call-card">
           <StatusIndicator status={status} />
-
-          {/* ---- Video section ---- */}
-          <VideoGrid localRef={localRef} remoteRef={remoteRef} />
-
-          {/* ---- Room input ---- */}
-          {status !== "connected" && (
-            <div className="room-container">
-              <RoomInput room={room} setRoom={setRoom} />
-            </div>
-          )}
-
-          {/* ---- Timer ---- */}
+          <VideoGrid
+            localRef={localRef}
+            remoteRef={remoteRef}
+            isCameraOn={isCameraOn}
+            isMicOn={isMicOn}
+            onToggleCamera={toggleCamera}
+            onToggleMic={toggleMic}
+          />
           {timeLeft !== null && <TimerProgress timeLeft={timeLeft} />}
 
-          {/* ---- Chat ---- */}
+          <div className={`join-panel ${status === "connected" ? "join-panel-connected" : ""}`}>
+            {status !== "connected" && (
+              <div className="join-input">
+                <RoomInput
+                  room={room}
+                  setRoom={setRoom}
+                />
+              </div>
+            )}
+            <div className="join-actions">
+              <CallButtons
+                onStart={() => startCall(room)}
+                onDisconnect={disconnect}
+                startDisabled={!canStart}
+                disconnectDisabled={!canDisconnect}
+              />
+            </div>
+          </div>
+
           <ChatBox
             status={status}
             messages={messages}
@@ -67,15 +91,6 @@ export default function App() {
             sendFile={sendFile}
             receivingFile={receivingFile}
           />
-
-          {/* ---- Call Buttons ---- */}
-          <div className="button-group">
-            <CallButtons
-              onStart={() => startCall(room)}
-              onDisconnect={disconnect}
-              disabled={status !== "disconnected"}
-            />
-          </div>
         </div>
       </div>
     </div>

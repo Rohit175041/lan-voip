@@ -1,73 +1,117 @@
-/* -------- GRID LAYOUT -------- */
 .video-grid {
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  gap: 1rem;
-  margin: 1rem 0;
-  width: 100%;
-  flex-direction: row;  /* ✅ horizontal by default (desktop/tablet) */
-  flex-wrap: wrap;
+  position: relative;
+  z-index: 1;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.9rem;
+  margin: 0.7rem 0 1rem;
 }
 
-/* Mirror only the local preview */
-.video-element.local-mirror {
-  transform: scaleX(-1) !important;
-}
-
-/* -------- VIDEO CARD -------- */
 .video-card {
-  flex: 1 1 45%;             
-  max-width: 400px;
-  min-width: 220px;
-  aspect-ratio: 16 / 9;
-  background: rgba(255, 255, 255, 0.06); /* ✅ glass effect */
+  position: relative;
+  aspect-ratio: 16 / 10;
   border-radius: 16px;
   overflow: hidden;
-  box-shadow: 0 8px 25px rgba(0, 0, 0, 0.35);
-  position: relative;
-  backdrop-filter: blur(12px);
-  transition: transform 0.25s ease, box-shadow 0.25s ease;
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  border: 1px solid #d8e1ec;
+  background: #e2e8f0;
+  box-shadow: 0 4px 14px rgba(15, 23, 42, 0.08);
+  min-height: 220px;
 }
 
-.video-card:hover {
-  transform: scale(1.03);
-  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
+.video-card::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(to top, rgba(15, 23, 42, 0.16), transparent 45%);
 }
 
-/* -------- VIDEO ELEMENT -------- */
 .video-element {
   width: 100%;
   height: 100%;
   object-fit: cover;
-  border-radius: inherit;
 }
 
-/* -------- LABEL -------- */
+.video-element.local-mirror {
+  transform: scaleX(-1);
+}
+
 .video-label {
   position: absolute;
-  bottom: 10px;
-  right: 10px;
-  background: rgba(0, 0, 0, 0.65);
-  padding: 4px 12px;
-  border-radius: 20px;
-  font-size: 0.8rem;
-  font-weight: 500;
-  color: #fff;
-  white-space: nowrap;
-  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
+  left: 0.6rem;
+  bottom: 0.6rem;
+  z-index: 1;
+  padding: 0.24rem 0.56rem;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: #334155;
+  background: rgba(248, 250, 252, 0.92);
+  border: 1px solid #d1d9e5;
 }
 
-/* -------- RESPONSIVE -------- */
+.video-controls {
+  position: absolute;
+  right: 0.6rem;
+  bottom: 0.6rem;
+  z-index: 3;
+  display: inline-flex;
+  gap: 0.45rem;
+}
+
+.video-control-btn {
+  width: 34px;
+  height: 34px;
+  border-radius: 999px;
+  border: 1px solid #d1d9e5;
+  background: rgba(255, 255, 255, 0.95);
+  color: #334155;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: transform 120ms ease, box-shadow 120ms ease;
+}
+
+.video-control-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.14);
+}
+
+.video-control-btn.off {
+  color: #b91c1c;
+  background: #fef2f2;
+  border-color: #fecaca;
+}
+
+.video-off-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.45rem;
+  background: rgba(248, 250, 252, 0.78);
+  color: #475569;
+  font-size: 0.9rem;
+  font-weight: 600;
+  pointer-events: none;
+}
+
+.video-off-overlay svg {
+  font-size: 1.1rem;
+}
+
 @media (max-width: 768px) {
   .video-grid {
-    flex-direction: column;   /* ✅ stack vertically on mobile */
+    grid-template-columns: 1fr;
+    gap: 0.7rem;
   }
 
   .video-card {
-    flex: 1 1 100%;           
-    max-width: 100%;
-    border-radius: 14px;
+    aspect-ratio: 16 / 9;
   }
 }

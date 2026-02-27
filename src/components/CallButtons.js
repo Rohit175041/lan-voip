@@ -3,18 +3,27 @@ import React from "react";
 import { FaPhone, FaPhoneSlash } from "react-icons/fa";
 import "./CallButtons.css";  
 
-export default function CallButtons({ onStart, onDisconnect, disabled }) {
+export default function CallButtons({
+  onStart,
+  onDisconnect,
+  startDisabled,
+  disconnectDisabled,
+}) {
   return (
     <div className="button-group">
       <button
         onClick={onStart}
-        disabled={disabled}
-        className={`btn ${disabled ? "btn-disabled" : "btn-green"}`}
+        disabled={startDisabled}
+        className={`btn ${startDisabled ? "btn-disabled" : "btn-green"}`}
       >
-        <FaPhone /> Start Call
+        <FaPhone /> Connect
       </button>
 
-      <button onClick={onDisconnect} className="btn btn-red">
+      <button
+        onClick={onDisconnect}
+        disabled={disconnectDisabled}
+        className={`btn ${disconnectDisabled ? "btn-disabled" : "btn-red"}`}
+      >
         <FaPhoneSlash /> Disconnect
       </button>
     </div>

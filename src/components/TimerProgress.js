@@ -3,6 +3,8 @@ import "./TimerProgress.css";
 
 export default function TimerProgress({ timeLeft, totalTime = 120 }) {
   const percentage = Math.max(0, Math.round((timeLeft / totalTime) * 100));
+  const minutes = Math.floor(timeLeft / 60);
+  const seconds = String(timeLeft % 60).padStart(2, "0");
 
   return (
     <div className="progress-container">
@@ -11,7 +13,7 @@ export default function TimerProgress({ timeLeft, totalTime = 120 }) {
         style={{ width: `${percentage}%` }}
       ></div>
       <span className="progress-text">
-        Waiting... {timeLeft}s
+        Waiting for peer: {minutes}:{seconds}
       </span>
     </div>
   );
