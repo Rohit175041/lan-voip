@@ -59,7 +59,6 @@ src/
 1. Clone the repository:
 
 ```
-https://github.com/Rohit175041/voip_server
 cd voip_server
 ```
 
