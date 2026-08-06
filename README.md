@@ -124,7 +124,4 @@ cd voip_server
 - 💻 **Frontend Repository:** [lan-voip](https://github.com/Rohit175041/lan-voip)
 - 🚀 **Live Demo:** [lan-voip.onrender.com](https://lan-voip.onrender.com)
 
-### 👨‍💻 Author
-
-Developed by **Rohit Singh** ✨
 
