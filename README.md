@@ -119,9 +119,4 @@ cd voip_server
 * 🔐 End-to-end encryption for chat/files
 * 🌐 Deploy signaling server on cloud (Render)
 
-## 🌐 Project Links
-- 🖥️ **Backend Repository:** [voip_server](https://github.com/Rohit175041/voip_server)
-- 💻 **Frontend Repository:** [lan-voip](https://github.com/Rohit175041/lan-voip)
-- 🚀 **Live Demo:** [lan-voip.onrender.com](https://lan-voip.onrender.com)
-
 
